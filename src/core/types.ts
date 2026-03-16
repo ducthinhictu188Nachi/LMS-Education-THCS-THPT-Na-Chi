@@ -62,10 +62,16 @@ export interface Lesson {
 
 export interface Assignment {
   id: string;
-  lessonId: string;
+  lessonId?: string;
   title: string;
   description: string;
   dueDate: string;
+  grade?: string;
+  classId?: string;
+  subjectId?: string;
+  topicId?: string;
+  studentIds?: string[];
+  attachments?: string[];
 }
 
 export type QuestionType = 'multiple_choice' | 'true_false' | 'short_answer' | 'essay';

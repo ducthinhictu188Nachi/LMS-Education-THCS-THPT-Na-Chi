@@ -14,6 +14,7 @@ import { Announcements } from './pages/admin/Announcements';
 import { Reports } from './pages/admin/Reports';
 import { StudentDashboard } from './pages/app/Dashboard';
 import { StudentLessons } from './pages/app/StudentLessons';
+import { StudentAssignments } from './pages/app/StudentAssignments';
 import { LessonDetail } from './pages/app/LessonDetail';
 import { StudentTests } from './pages/app/StudentTests';
 import { TakeTest } from './pages/app/TakeTest';
@@ -72,6 +73,7 @@ export default function App() {
         {/* App Routes (Student) */}
         <Route path="/app" element={<ProtectedRoute allowedRole="student"><StudentDashboard /></ProtectedRoute>} />
         <Route path="/app/lessons" element={<ProtectedRoute allowedRole="student"><StudentLessons /></ProtectedRoute>} />
+        <Route path="/app/assignments" element={<ProtectedRoute allowedRole="student"><StudentAssignments /></ProtectedRoute>} />
         <Route path="/app/lessons/:id" element={<ProtectedRoute allowedRole="student"><LessonDetail /></ProtectedRoute>} />
         <Route path="/app/tests" element={<ProtectedRoute allowedRole="student"><StudentTests /></ProtectedRoute>} />
         <Route path="/app/tests/:id/take" element={<ProtectedRoute allowedRole="student"><TakeTest /></ProtectedRoute>} />

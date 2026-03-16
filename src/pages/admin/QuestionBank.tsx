@@ -322,8 +322,10 @@ LƯU Ý:
           Cấu trúc đề thi thường có 3 phần chính theo định dạng mới của Bộ GD&ĐT:
           - Phần I: Câu hỏi trắc nghiệm nhiều lựa chọn (multiple_choice). Thường có 4 phương án A, B, C, D.
           - Phần II: Câu hỏi trắc nghiệm Đúng/Sai (true_false). Đây là phần quan trọng nhất. 
-            + Mỗi câu hỏi lớn (ví dụ: Câu 1, Câu 2...) sẽ có một đoạn Lệnh dẫn/Ngữ cảnh (context).
-            + Sau đó là 4 ý lựa chọn được đánh dấu là a), b), c), d).
+            Quy tắc cấu trúc câu hỏi Đúng/Sai:
+            1. Lệnh dẫn/Ngữ cảnh (content): Là phần văn bản nêu tình huống, đoạn mã code hoặc bảng dữ liệu chung.
+            2. Các ý lựa chọn (subQuestions): Luôn gồm 4 ý ký hiệu là a), b), c), d).
+            3. Đáp án (correctAnswer): Mỗi ý a, b, c, d chỉ nhận giá trị là true (Đúng) hoặc false (Sai).
             + Bạn PHẢI trích xuất mỗi câu hỏi lớn này thành MỘT đối tượng JSON với type là 'true_false'.
             + Mảng 'subQuestions' PHẢI chứa đầy đủ 4 ý a, b, c, d.
           - Phần III: Câu hỏi trắc nghiệm trả lời ngắn (short_answer).

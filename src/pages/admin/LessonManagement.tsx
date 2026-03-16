@@ -60,21 +60,39 @@ const LessonManagement = () => {
   const [gradingData, setGradingData] = useState<{ score: string, feedback: string }>({ score: '', feedback: '' });
   const [editingSubmissionId, setEditingSubmissionId] = useState<string | null>(null);
 
+  // Independent Assignment State
+  const [isIndependentAssignmentModalOpen, setIsIndependentAssignmentModalOpen] = useState(false);
+  const [independentAssignmentFormData, setIndependentAssignmentFormData] = useState({
+    title: '',
+    description: '',
+    dueDate: new Date(Date.now() + 86400000 * 7).toISOString().split('T')[0],
+    grade: '10',
+    classId: '',
+    subjectId: '',
+    topicId: '',
+    studentIds: [] as string[],
+    attachments: [] as string[]
+  });
+  const [classStudents, setClassStudents] = useState<User[]>([]);
+  const [selectAllStudents, setSelectAllStudents] = useState(false);
+
   useEffect(() => {
     fetchData();
   }, []);
 
   const fetchData = async () => {
-    const [lesData, subData, topData, classData] = await Promise.all([
+    const [lesData, subData, topData, classData, studentData] = await Promise.all([
       dataProvider.getList<Lesson>('lessons'),
       dataProvider.getList<Subject>('subjects'),
       dataProvider.getList<Topic>('topics'),
-      dataProvider.getList<Class>('classes')
+      dataProvider.getList<Class>('classes'),
+      dataProvider.getList<User>('users', { role: 'student' })
     ]);
     setLessons(lesData);
     setSubjects(subData);
     setTopics(topData);
     setClasses(classData);
+    setStudents(studentData);
   };
 
   const handleOpenModal = (lesson?: Lesson) => {
@@ -365,6 +383,98 @@ const LessonManagement = () => {
     }
   };
 
+  const handleOpenIndependentAssignmentModal = () => {
+    setIndependentAssignmentFormData({
+      title: '',
+      description: '',
+      dueDate: new Date(Date.now() + 86400000 * 7).toISOString().split('T')[0],
+      grade: '10',
+      classId: '',
+      subjectId: '',
+      topicId: '',
+      studentIds: [],
+      attachments: []
+    });
+    setClassStudents([]);
+    setSelectAllStudents(false);
+    setIsIndependentAssignmentModalOpen(true);
+  };
+
+  const handleClassChangeForAssignment = (classId: string) => {
+    setIndependentAssignmentFormData(prev => ({ ...prev, classId, studentIds: [] }));
+    setSelectAllStudents(false);
+    if (classId) {
+      const studentsInClass = students.filter(s => s.classId === classId);
+      setClassStudents(studentsInClass);
+    } else {
+      setClassStudents([]);
+    }
+  };
+
+  const handleToggleStudent = (studentId: string) => {
+    setIndependentAssignmentFormData(prev => {
+      const newStudentIds = prev.studentIds.includes(studentId)
+        ? prev.studentIds.filter(id => id !== studentId)
+        : [...prev.studentIds, studentId];
+      
+      setSelectAllStudents(newStudentIds.length === classStudents.length && classStudents.length > 0);
+      return { ...prev, studentIds: newStudentIds };
+    });
+  };
+
+  const handleToggleAllStudents = () => {
+    if (selectAllStudents) {
+      setIndependentAssignmentFormData(prev => ({ ...prev, studentIds: [] }));
+      setSelectAllStudents(false);
+    } else {
+      setIndependentAssignmentFormData(prev => ({ ...prev, studentIds: classStudents.map(s => s.id) }));
+      setSelectAllStudents(true);
+    }
+  };
+
+  const handleIndependentFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      const file = e.target.files[0];
+      if (file.size > 2 * 1024 * 1024) {
+        alert('Kích thước tệp quá lớn. Vui lòng chọn tệp dưới 2MB.');
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = () => {
+        const base64 = reader.result as string;
+        setIndependentAssignmentFormData(prev => ({
+          ...prev,
+          attachments: [...prev.attachments, base64]
+        }));
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleSubmitIndependentAssignment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!independentAssignmentFormData.title || !independentAssignmentFormData.description) {
+      alert('Vui lòng nhập tên bài tập và nội dung');
+      return;
+    }
+
+    const assignmentData = {
+      title: independentAssignmentFormData.title,
+      description: independentAssignmentFormData.description,
+      dueDate: new Date(independentAssignmentFormData.dueDate).toISOString(),
+      grade: independentAssignmentFormData.grade,
+      classId: independentAssignmentFormData.classId,
+      subjectId: independentAssignmentFormData.subjectId,
+      topicId: independentAssignmentFormData.topicId,
+      studentIds: independentAssignmentFormData.studentIds,
+      attachments: independentAssignmentFormData.attachments
+    };
+
+    await dataProvider.create('assignments', assignmentData);
+    alert('Đã giao bài tập thành công!');
+    setIsIndependentAssignmentModalOpen(false);
+  };
+
   const filteredTopics = topics.filter(t => t.subjectId === formData.subjectId);
   const filterTopicsForList = topics.filter(t => !filterSubjectId || t.subjectId === filterSubjectId);
   const filteredClassesForForm = classes.filter(c => c.grade.toString() === formData.grade);
@@ -391,13 +501,22 @@ const LessonManagement = () => {
           <h1 className="text-2xl font-bold text-gray-900">Quản lý Bài giảng</h1>
           <p className="text-gray-500 mt-1">Soạn thảo và quản lý nội dung bài học</p>
         </div>
-        <button
-          onClick={() => handleOpenModal()}
-          className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition-colors"
-        >
-          <Plus size={20} />
-          <span>Thêm bài giảng</span>
-        </button>
+        <div className="flex gap-3">
+          <button
+            onClick={() => handleOpenIndependentAssignmentModal()}
+            className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 transition-colors"
+          >
+            <FileText size={20} />
+            <span>Giao bài tập</span>
+          </button>
+          <button
+            onClick={() => handleOpenModal()}
+            className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition-colors"
+          >
+            <Plus size={20} />
+            <span>Thêm bài giảng</span>
+          </button>
+        </div>
       </div>
 
       {/* Filters */}
@@ -1288,6 +1407,182 @@ const LessonManagement = () => {
             </div>
           )}
         </div>
+      </Modal>
+
+      <Modal
+        isOpen={isIndependentAssignmentModalOpen}
+        onClose={() => setIsIndependentAssignmentModalOpen(false)}
+        title="Giao bài tập"
+        size="lg"
+      >
+        <form onSubmit={handleSubmitIndependentAssignment} className="space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Tên bài học / Bài tập</label>
+              <input
+                type="text"
+                required
+                value={independentAssignmentFormData.title}
+                onChange={e => setIndependentAssignmentFormData({...independentAssignmentFormData, title: e.target.value})}
+                className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                placeholder="Nhập tên bài tập..."
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Hạn nộp</label>
+              <input
+                type="date"
+                required
+                value={independentAssignmentFormData.dueDate}
+                onChange={e => setIndependentAssignmentFormData({...independentAssignmentFormData, dueDate: e.target.value})}
+                className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Khối</label>
+              <select
+                value={independentAssignmentFormData.grade}
+                onChange={e => {
+                  setIndependentAssignmentFormData({...independentAssignmentFormData, grade: e.target.value, classId: '', studentIds: []});
+                  setClassStudents([]);
+                  setSelectAllStudents(false);
+                }}
+                className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+              >
+                <option value="10">Khối 10</option>
+                <option value="11">Khối 11</option>
+                <option value="12">Khối 12</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Lớp</label>
+              <select
+                required
+                value={independentAssignmentFormData.classId}
+                onChange={e => handleClassChangeForAssignment(e.target.value)}
+                className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+              >
+                <option value="">Chọn lớp</option>
+                {classes.filter(c => c.grade.toString() === independentAssignmentFormData.grade).map(c => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Môn học</label>
+              <select
+                value={independentAssignmentFormData.subjectId}
+                onChange={e => setIndependentAssignmentFormData({...independentAssignmentFormData, subjectId: e.target.value, topicId: ''})}
+                className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+              >
+                <option value="">Chọn môn học</option>
+                {subjects.map(s => (
+                  <option key={s.id} value={s.id}>{s.name}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {independentAssignmentFormData.subjectId && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Chủ đề</label>
+              <select
+                value={independentAssignmentFormData.topicId}
+                onChange={e => setIndependentAssignmentFormData({...independentAssignmentFormData, topicId: e.target.value})}
+                className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+              >
+                <option value="">Chọn chủ đề</option>
+                {topics.filter(t => t.subjectId === independentAssignmentFormData.subjectId).map(t => (
+                  <option key={t.id} value={t.id}>{t.name}</option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {classStudents.length > 0 && (
+            <div className="border border-gray-200 rounded-xl p-4 bg-gray-50">
+              <div className="flex justify-between items-center mb-3">
+                <label className="block text-sm font-medium text-gray-700">Chọn học sinh cần giao</label>
+                <label className="flex items-center gap-2 text-sm cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={selectAllStudents}
+                    onChange={handleToggleAllStudents}
+                    className="rounded text-emerald-600 focus:ring-emerald-500"
+                  />
+                  <span className="font-medium">Chọn tất cả</span>
+                </label>
+              </div>
+              <div className="max-h-40 overflow-y-auto grid grid-cols-2 gap-2">
+                {classStudents.map(student => (
+                  <label key={student.id} className="flex items-center gap-2 text-sm p-2 hover:bg-white rounded-lg cursor-pointer transition-colors">
+                    <input
+                      type="checkbox"
+                      checked={independentAssignmentFormData.studentIds.includes(student.id)}
+                      onChange={() => handleToggleStudent(student.id)}
+                      className="rounded text-emerald-600 focus:ring-emerald-500"
+                    />
+                    <span>{student.fullName}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Nội dung bài tập</label>
+            <textarea
+              required
+              value={independentAssignmentFormData.description}
+              onChange={e => setIndependentAssignmentFormData({...independentAssignmentFormData, description: e.target.value})}
+              className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+              rows={4}
+              placeholder="Nhập nội dung bài tập..."
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Đính kèm tài liệu (Hình ảnh, Word, PDF...)</label>
+            <div className="flex items-center gap-4">
+              <input
+                type="file"
+                id="independent-file-upload"
+                className="hidden"
+                onChange={handleIndependentFileChange}
+                accept=".pdf,.doc,.docx,.png,.jpg,.jpeg"
+              />
+              <label
+                htmlFor="independent-file-upload"
+                className="flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-xl cursor-pointer hover:bg-gray-50 transition-colors"
+              >
+                <Upload size={20} className="text-gray-500" />
+                <span className="text-sm font-medium text-gray-700">Tải tệp lên</span>
+              </label>
+              <span className="text-sm text-gray-500">
+                {independentAssignmentFormData.attachments.length} tệp đã chọn
+              </span>
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-3 pt-4 border-t">
+            <button
+              type="button"
+              onClick={() => setIsIndependentAssignmentModalOpen(false)}
+              className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-xl transition-colors font-medium"
+            >
+              Hủy
+            </button>
+            <button
+              type="submit"
+              className="px-6 py-2 bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 transition-colors font-medium"
+            >
+              Giao bài
+            </button>
+          </div>
+        </form>
       </Modal>
     </div>
   );
