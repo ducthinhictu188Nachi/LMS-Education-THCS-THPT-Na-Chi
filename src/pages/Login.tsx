@@ -49,12 +49,15 @@ export const Login: React.FC = () => {
         {/* Left Content */}
         <div className="w-full md:w-1/2 bg-[#1a7a53] md:bg-transparent text-white flex flex-col items-center justify-center p-10 z-10 relative">
           {/* Logo */}
-          <div className="w-24 h-24 bg-white rounded-full flex items-center justify-center mb-4 shadow-lg overflow-hidden p-2">
+          <div className="w-32 h-32 bg-white rounded-full flex items-center justify-center mb-4 shadow-[0_8px_30px_rgb(0,0,0,0.12)] overflow-hidden p-2 border-4 border-white/20 backdrop-blur-sm">
             <img 
-              src="/thcs&thpt na chi.png" 
-              alt="Logo" 
-              className="w-full h-full object-contain"
+              src="/logo.png" 
+              alt="Logo THCS & THPT Nà Chì" 
+              className="w-full h-full object-contain drop-shadow-sm"
               referrerPolicy="no-referrer"
+              onError={(e) => {
+                e.currentTarget.src = 'https://ui-avatars.com/api/?name=LMS&background=fff&color=1a7a53&size=128';
+              }}
             />
           </div>
           <h2 className="text-xl font-bold mb-8 tracking-wide text-center">THCS và THPT Nà Chì</h2>
