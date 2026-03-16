@@ -78,6 +78,8 @@ export const TestResult: React.FC = () => {
             
             let isCorrect: boolean | null = null;
             let tfScore = 0;
+            const questionMaxPoints = q.type === 'true_false' ? 1.0 : q.points;
+
             if (q.type === 'multiple_choice') {
               isCorrect = studentAnswer === q.correctAnswer;
             } else if (q.type === 'true_false' && q.subQuestions) {
@@ -93,15 +95,13 @@ export const TestResult: React.FC = () => {
               else if (correctCount > 0) isCorrect = null; // Partial correct
               else isCorrect = false;
 
-              let scoreRatio = 0;
-              if (correctCount === 1) scoreRatio = 0.1;
-              else if (correctCount === 2) scoreRatio = 0.25;
-              else if (correctCount === 3) scoreRatio = 0.5;
-              else if (correctCount === 4) scoreRatio = 1.0;
+              if (correctCount === 1) tfScore = 0.1;
+              else if (correctCount === 2) tfScore = 0.25;
+              else if (correctCount === 3) tfScore = 0.5;
+              else if (correctCount === 4) tfScore = 1.0;
               
-              tfScore = scoreRatio * q.points;
             } else if (isAIGraded) {
-              isCorrect = aiScore === q.points ? true : (aiScore > 0 ? null : false); // null for partial credit
+              isCorrect = aiScore === questionMaxPoints ? true : (aiScore > 0 ? null : false); // null for partial credit
             }
 
             return (
@@ -130,17 +130,17 @@ export const TestResult: React.FC = () => {
                     
                     {isAIGraded && (
                       <span className="text-xs font-bold text-indigo-600 bg-indigo-50 px-2 py-1 rounded mt-1">
-                        {aiScore} / {q.points} điểm
+                        {aiScore} / {questionMaxPoints} điểm
                       </span>
                     )}
                     {q.type === 'multiple_choice' && (
                        <span className="text-xs font-bold text-indigo-600 bg-indigo-50 px-2 py-1 rounded mt-1">
-                         {isCorrect ? q.points : 0} / {q.points} điểm
+                         {isCorrect ? questionMaxPoints : 0} / {questionMaxPoints} điểm
                        </span>
                     )}
                     {q.type === 'true_false' && (
                        <span className="text-xs font-bold text-indigo-600 bg-indigo-50 px-2 py-1 rounded mt-1">
-                         {tfScore} / {q.points} điểm
+                         {tfScore} / {questionMaxPoints} điểm
                        </span>
                     )}
                   </div>

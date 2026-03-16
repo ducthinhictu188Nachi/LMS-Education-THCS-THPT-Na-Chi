@@ -124,10 +124,11 @@ export const TakeTest: React.FC = () => {
     
     // Auto-grade multiple choice and true/false immediately
     test.questions.forEach(q => {
-      maxScore += q.points;
+      const questionMaxPoints = q.type === 'true_false' ? 1.0 : q.points;
+      maxScore += questionMaxPoints;
       if (q.type === 'multiple_choice') {
         if (answers[q.id] === q.correctAnswer) {
-          totalScore += q.points;
+          totalScore += questionMaxPoints;
         }
       } else if (q.type === 'true_false' && q.subQuestions) {
         let correctCount = 0;
@@ -138,13 +139,13 @@ export const TakeTest: React.FC = () => {
           }
         });
         
-        let scoreRatio = 0;
-        if (correctCount === 1) scoreRatio = 0.1;
-        else if (correctCount === 2) scoreRatio = 0.25;
-        else if (correctCount === 3) scoreRatio = 0.5;
-        else if (correctCount === 4) scoreRatio = 1.0;
+        let score = 0;
+        if (correctCount === 1) score = 0.1;
+        else if (correctCount === 2) score = 0.25;
+        else if (correctCount === 3) score = 0.5;
+        else if (correctCount === 4) score = 1.0;
         
-        totalScore += scoreRatio * q.points;
+        totalScore += score;
       }
     });
 
@@ -305,7 +306,7 @@ export const TakeTest: React.FC = () => {
               </h3>
             </div>
             <span className="shrink-0 text-sm font-medium text-indigo-600 bg-indigo-50 px-2 py-1 rounded">
-              {currentQuestion.points} điểm
+              {currentQuestion.type === 'true_false' ? 1 : currentQuestion.points} điểm
             </span>
           </div>
 

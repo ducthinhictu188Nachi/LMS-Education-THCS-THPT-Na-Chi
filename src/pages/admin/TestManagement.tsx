@@ -252,7 +252,8 @@ export const TestManagement: React.FC = () => {
 
       const generatedQuestions: Question[] = parseTruncatedJSON(response.text).map((q: any) => ({
         ...q,
-        id: Math.random().toString(36).substr(2, 9)
+        id: Math.random().toString(36).substr(2, 9),
+        points: q.type === 'true_false' ? 1 : (q.points || 1)
       }));
 
       setFormData(prev => ({
@@ -454,8 +455,10 @@ HẾT ---`;
       Cấu trúc đề thi thường có 3 phần chính theo định dạng mới của Bộ GD&ĐT:
       - Phần I: Câu hỏi trắc nghiệm nhiều lựa chọn (multiple_choice). Thường có 4 phương án A, B, C, D.
       - Phần II: Câu hỏi trắc nghiệm Đúng/Sai (true_false). Đây là phần quan trọng nhất. 
-        + Mỗi câu hỏi lớn (ví dụ: Câu 1, Câu 2...) sẽ có một đoạn Lệnh dẫn/Ngữ cảnh (context).
-        + Sau đó là 4 ý lựa chọn được đánh dấu là a), b), c), d).
+        Quy tắc cấu trúc câu hỏi Đúng/Sai:
+        1. Lệnh dẫn/Ngữ cảnh (content): Là phần văn bản nêu tình huống, đoạn mã code hoặc bảng dữ liệu chung.
+        2. Các ý lựa chọn (subQuestions): Luôn gồm 4 ý ký hiệu là a), b), c), d).
+        3. Đáp án (correctAnswer): Mỗi ý a, b, c, d chỉ nhận giá trị là true (Đúng) hoặc false (Sai).
         + Bạn PHẢI trích xuất mỗi câu hỏi lớn này thành MỘT đối tượng JSON với type là 'true_false'.
         + Mảng 'subQuestions' PHẢI chứa đầy đủ 4 ý a, b, c, d.
       - Phần III: Câu hỏi trắc nghiệm trả lời ngắn (short_answer).
@@ -492,8 +495,10 @@ HẾT ---`;
         Cấu trúc đề thi thường có 3 phần chính theo định dạng mới của Bộ GD&ĐT:
         - Phần I: Câu hỏi trắc nghiệm nhiều lựa chọn (multiple_choice).
         - Phần II: Câu hỏi trắc nghiệm Đúng/Sai (true_false). Đây là phần quan trọng nhất. 
-          + Mỗi câu hỏi lớn (ví dụ: Câu 1, Câu 2...) sẽ có một đoạn Lệnh dẫn/Ngữ cảnh (context).
-          + Sau đó là 4 ý lựa chọn được đánh dấu là a), b), c), d).
+          Quy tắc cấu trúc câu hỏi Đúng/Sai:
+          1. Lệnh dẫn/Ngữ cảnh (content): Là phần văn bản nêu tình huống, đoạn mã code hoặc bảng dữ liệu chung.
+          2. Các ý lựa chọn (subQuestions): Luôn gồm 4 ý ký hiệu là a), b), c), d).
+          3. Đáp án (correctAnswer): Mỗi ý a, b, c, d chỉ nhận giá trị là true (Đúng) hoặc false (Sai).
           + Bạn PHẢI trích xuất mỗi câu hỏi lớn này thành MỘT đối tượng JSON với type là 'true_false'.
           + Mảng 'subQuestions' PHẢI chứa đầy đủ 4 ý a, b, c, d.
         - Phần III: Câu hỏi trắc nghiệm trả lời ngắn (short_answer).
@@ -565,7 +570,8 @@ HẾT ---`;
 
       const extractedQuestions: Question[] = parseTruncatedJSON(response.text).map((q: any) => ({
         ...q,
-        id: Math.random().toString(36).substr(2, 9)
+        id: Math.random().toString(36).substr(2, 9),
+        points: q.type === 'true_false' ? 1 : (q.points || 1)
       }));
 
       setFormData(prev => ({
@@ -654,7 +660,11 @@ HẾT ---`;
   const handleSaveQuestion = (e: React.FormEvent) => {
     e.preventDefault();
     const newQuestions = [...(formData.questions || [])];
-    const q = { ...questionForm, id: questionForm.id || Math.random().toString(36).substr(2, 9) } as Question;
+    const q = { 
+      ...questionForm, 
+      id: questionForm.id || Math.random().toString(36).substr(2, 9),
+      points: questionForm.type === 'true_false' ? 1 : questionForm.points
+    } as Question;
     
     if (editingQuestionIndex !== null) {
       newQuestions[editingQuestionIndex] = q;
@@ -988,7 +998,7 @@ HẾT ---`;
                         - {q.difficulty === 'recognition' ? 'Nhận biết' : q.difficulty === 'understanding' ? 'Thông hiểu' : 'Vận dụng'}
                       </span>
                     )}
-                    <span className="text-indigo-600 font-medium ml-auto">{q.points} điểm</span>
+                    <span className="text-indigo-600 font-medium ml-auto">{q.type === 'true_false' ? 1 : q.points} điểm</span>
                   </div>
                   <p className="text-gray-900 text-sm mb-2">{q.content}</p>
                   {q.type === 'multiple_choice' && q.options && (
@@ -1273,7 +1283,14 @@ HẾT ---`;
               <label className="block text-sm font-medium text-gray-700 mb-1">Loại câu hỏi</label>
               <select 
                 value={questionForm.type}
-                onChange={e => setQuestionForm({...questionForm, type: e.target.value as QuestionType})}
+                onChange={e => {
+                  const type = e.target.value as QuestionType;
+                  setQuestionForm({
+                    ...questionForm, 
+                    type,
+                    points: type === 'true_false' ? 1 : questionForm.points
+                  });
+                }}
                 className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
               >
                 <option value="multiple_choice">Trắc nghiệm nhiều lựa chọn</option>
@@ -1455,11 +1472,15 @@ HẾT ---`;
               type="number" 
               required
               min={0}
-              step={0.25}
-              value={questionForm.points}
+              step={0.1}
+              value={questionForm.type === 'true_false' ? 1 : questionForm.points}
               onChange={e => setQuestionForm({...questionForm, points: Number(e.target.value)})}
-              className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+              disabled={questionForm.type === 'true_false'}
+              className={`w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 ${questionForm.type === 'true_false' ? 'bg-gray-100 cursor-not-allowed text-gray-500' : ''}`}
             />
+            {questionForm.type === 'true_false' && (
+              <p className="text-xs text-amber-600 mt-1">Câu hỏi Đúng/Sai mặc định là 1 điểm (0.1đ/1 ý, 0.25đ/2 ý, 0.5đ/3 ý, 1đ/4 ý).</p>
+            )}
           </div>
 
           <div className="pt-4 flex justify-end gap-3 border-t">
@@ -1588,7 +1609,7 @@ HẾT ---`;
                 <div className="flex-1">
                   <div className="flex justify-between items-start">
                     <p className="text-sm font-medium text-gray-900 line-clamp-2">{q.content}</p>
-                    <span className="text-xs font-medium text-indigo-600 whitespace-nowrap ml-2">{q.points} điểm</span>
+                    <span className="text-xs font-medium text-indigo-600 whitespace-nowrap ml-2">{q.type === 'true_false' ? 1 : q.points} điểm</span>
                   </div>
                   <div className="flex gap-2 mt-1 text-xs text-gray-500">
                     <span>{q.type === 'multiple_choice' ? 'Trắc nghiệm' : q.type === 'true_false' ? 'Đúng/Sai' : q.type === 'short_answer' ? 'Trả lời ngắn' : 'Tự luận'}</span>
