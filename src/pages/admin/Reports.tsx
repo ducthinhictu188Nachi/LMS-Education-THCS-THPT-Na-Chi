@@ -36,7 +36,7 @@ export const Reports: React.FC = () => {
     fetchData();
   }, []);
 
-  const classStudents = students.filter(s => s.classId === selectedClassId);
+  const classStudents = students.filter(s => String(s.classId) === String(selectedClassId));
   const studentIds = classStudents.map(s => s.id);
 
   // 1. % Học sinh hoàn thành bài giảng
@@ -55,10 +55,39 @@ export const Reports: React.FC = () => {
   let lateCount = 0;
   let missingCount = 0;
 
-  const classAssignments = assignments; // Assuming all assignments apply for now
+  const selectedClass = classes.find(c => String(c.id) === String(selectedClassId));
 
   classStudents.forEach(student => {
-    classAssignments.forEach(assignment => {
+    const studentClass = classes.find(c => String(c.id) === String(student.classId));
+    
+    // Lọc các bài tập được giao cho học sinh này
+    const studentAssignments = assignments.filter(a => {
+      let studentIds = a.studentIds;
+      if (typeof studentIds === 'string') {
+        try {
+          studentIds = JSON.parse(studentIds);
+        } catch (e) {
+          studentIds = studentIds.split(',').map(s => s.trim()).filter(Boolean);
+        }
+      }
+
+      if (studentIds && studentIds.includes(student.id)) return true;
+      if (a.classId && String(a.classId) === String(student.classId) && (!studentIds || studentIds.length === 0)) return true;
+      if (studentClass && a.grade && String(a.grade) === String(studentClass.grade) && !a.classId && (!studentIds || studentIds.length === 0)) return true;
+      
+      if (a.lessonId && !a.classId && !a.grade && (!studentIds || studentIds.length === 0)) {
+        const lesson = lessons.find(l => l.id === a.lessonId);
+        if (lesson && lesson.status === 'published') {
+          if (lesson.classId && String(lesson.classId) !== String(student.classId)) return false;
+          if (lesson.grade && studentClass && String(lesson.grade) !== String(studentClass.grade)) return false;
+          return true;
+        }
+        return false;
+      }
+      return false;
+    });
+
+    studentAssignments.forEach(assignment => {
       const sub = submissions.find(s => s.studentId === student.id && s.assignmentId === assignment.id);
       if (!sub) {
         missingCount++;

@@ -6,27 +6,7 @@ import { Plus, Search, Edit2, Trash2, Clock, Users, Sparkles, Loader2, Calendar,
 import { GoogleGenAI, Type, ThinkingLevel } from '@google/genai';
 
 import { useNavigate } from 'react-router-dom';
-
-const parseTruncatedJSON = (jsonString: string) => {
-  try {
-    return JSON.parse(jsonString);
-  } catch (e: any) {
-    if (e.message.includes('Unterminated string') || e.message.includes('Unexpected end of JSON input') || e.message.includes('Expected')) {
-      let fixedString = jsonString;
-      while (fixedString.length > 0) {
-        const lastBrace = fixedString.lastIndexOf('}');
-        if (lastBrace === -1) break;
-        fixedString = fixedString.substring(0, lastBrace + 1) + ']';
-        try {
-          return JSON.parse(fixedString);
-        } catch (err) {
-          fixedString = fixedString.substring(0, lastBrace);
-        }
-      }
-    }
-    throw e;
-  }
-};
+import { parseTruncatedJSON } from '../../utils/jsonUtils';
 
 export const TestManagement: React.FC = () => {
   const [tests, setTests] = useState<Test[]>([]);
@@ -198,7 +178,8 @@ export const TestManagement: React.FC = () => {
 
       const prompt = `Bạn là một chuyên gia khảo thí và xây dựng đề kiểm tra theo định dạng của Bộ Giáo dục và Đào tạo Việt Nam (Công văn 7991).
       Hãy tạo đề kiểm tra môn Tin học THPT về chủ đề: "${aiPrompt}".
-      Cấu trúc đề gồm các phần sau:
+      
+      BẠN PHẢI TẠO ĐÚNG SỐ LƯỢNG VÀ LOẠI CÂU HỎI NHƯ YÊU CẦU DƯỚI ĐÂY. KHÔNG ĐƯỢC THIẾU HOẶC THỪA:
       ${promptDetails}
       
       Trả về mảng JSON các câu hỏi. Mỗi câu hỏi phải có trường 'difficulty' (recognition, understanding, application) tương ứng với mức độ.
@@ -213,7 +194,7 @@ export const TestManagement: React.FC = () => {
       - Mỗi ý (subQuestion) phải có 'id' (a, b, c, d), 'content' (nội dung ý), 'difficulty' (mức độ của ý đó: recognition, understanding, application), 'correctAnswer' (boolean), và 'explanation' (giải thích tại sao đúng/sai).`;
 
       const response = await ai.models.generateContent({
-        model: "gemini-3.1-pro-preview",
+        model: "gemini-3-flash-preview",
         contents: prompt,
         config: {
           responseMimeType: "application/json",
@@ -398,7 +379,7 @@ HẾT ---`;
       Chỉ trả về nội dung text của file đáp án mẫu, không kèm theo bất kỳ lời giải thích nào khác.`;
 
       const response = await ai.models.generateContent({
-        model: "gemini-3.1-pro-preview",
+        model: "gemini-3-flash-preview",
         contents: [
           {
             inlineData: {
@@ -531,7 +512,7 @@ HẾT ---`;
       contents.push({ text: prompt });
 
       const response = await ai.models.generateContent({
-        model: "gemini-3.1-pro-preview",
+        model: "gemini-3-flash-preview",
         contents: contents,
         config: {
           responseMimeType: "application/json",

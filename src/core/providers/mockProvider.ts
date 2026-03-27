@@ -1,5 +1,6 @@
 import { DataProvider } from '../dataProvider';
-import { User, Class, Subject, Topic, Lesson, Assignment, Test, Submission, Progress, Announcement, BankQuestion } from '../types';
+import { User, Class, Subject, Topic, Lesson, Assignment, Test, Submission, Progress, Announcement, BankQuestion, Badge } from '../types';
+import { ensureArray } from '../utils/data';
 
 const STORAGE_KEY = 'lms_data';
 
@@ -20,8 +21,8 @@ interface MockData {
 export const seedData = (): MockData => {
   const data: MockData = {
     users: [
-      { id: 't1', username: 'gv_tinhoc', password: '123', fullName: 'Nguyễn Văn A', role: 'teacher' },
-      { id: 's1', username: 'hs_an', password: '123', fullName: 'Trần Bình An', role: 'student', classId: 'c1', dob: '2008-05-15' },
+      { id: 't1', username: 'admin', password: '123', fullName: 'Giáo viên Quản trị', role: 'teacher' },
+      { id: 's1', username: 'student', password: '123', fullName: 'Học sinh Demo', role: 'student', classId: 'c1', dob: '2008-05-15' },
       { id: 's2', username: 'hs_binh', password: '123', fullName: 'Lê Thanh Bình', role: 'student', classId: 'c1', dob: '2008-08-20' },
     ],
     classes: [
@@ -142,7 +143,11 @@ export const seedData = (): MockData => {
 const getData = (): MockData => {
   const stored = localStorage.getItem(STORAGE_KEY);
   if (stored) {
-    return JSON.parse(stored);
+    try {
+      return JSON.parse(stored);
+    } catch (e) {
+      console.error("Error parsing stored data:", e);
+    }
   }
   return seedData();
 };
@@ -153,14 +158,25 @@ const saveData = (data: MockData) => {
 
 let currentUser: User | null = null;
 
+function normalizeUser(user: any): User {
+  if (!user) return user;
+  return {
+    ...user,
+    badges: ensureArray(user.badges),
+    xp: Number(user.xp || 0),
+    level: Number(user.level || 1)
+  };
+}
+
 export const mockProvider: DataProvider = {
   login: async (username, role, password) => {
     const data = getData();
     const user = data.users.find(u => u.username === username && u.role === role && (!password || u.password === password));
     if (user) {
-      currentUser = user;
-      localStorage.setItem('lms_current_user', JSON.stringify(user));
-      return user;
+      const normalizedUser = normalizeUser(user);
+      currentUser = normalizedUser;
+      localStorage.setItem('lms_current_user', JSON.stringify(normalizedUser));
+      return normalizedUser;
     }
     return null;
   },
@@ -168,8 +184,13 @@ export const mockProvider: DataProvider = {
     if (currentUser) return currentUser;
     const stored = localStorage.getItem('lms_current_user');
     if (stored) {
-      currentUser = JSON.parse(stored);
-      return currentUser;
+      try {
+        currentUser = normalizeUser(JSON.parse(stored));
+        return currentUser;
+      } catch (e) {
+        console.error("Error parsing current user:", e);
+        return null;
+      }
     }
     return null;
   },
@@ -181,6 +202,10 @@ export const mockProvider: DataProvider = {
   getList: async <T>(resource: string, params?: any): Promise<T[]> => {
     const data = getData();
     let list = (data as any)[resource] || [];
+    
+    if (resource === 'users') {
+      list = list.map(normalizeUser);
+    }
     
     // Basic filtering
     if (params) {
@@ -198,6 +223,11 @@ export const mockProvider: DataProvider = {
     const list = (data as any)[resource] || [];
     const item = list.find((i: any) => i.id === id);
     if (!item) throw new Error('Not found');
+    
+    if (resource === 'users') {
+      return normalizeUser(item) as any;
+    }
+    
     return item;
   },
   create: async <T>(resource: string, payload: any): Promise<T> => {
@@ -226,12 +256,29 @@ export const mockProvider: DataProvider = {
 
   submitAssignment: async (submission) => {
     const data = getData();
-    const newSubmission: Submission = {
-      ...submission,
-      id: Math.random().toString(36).substr(2, 9),
-      submittedAt: new Date().toISOString()
-    };
-    data.submissions.push(newSubmission);
+    const existingIndex = data.submissions.findIndex(
+      (s: any) => s.studentId === submission.studentId && 
+        ((submission.assignmentId && s.assignmentId === submission.assignmentId) || 
+         (submission.testId && s.testId === submission.testId))
+    );
+    
+    let newSubmission: Submission;
+    if (existingIndex !== -1) {
+      newSubmission = {
+        ...data.submissions[existingIndex],
+        ...submission,
+        submittedAt: new Date().toISOString()
+      };
+      data.submissions[existingIndex] = newSubmission;
+    } else {
+      newSubmission = {
+        ...submission,
+        id: Math.random().toString(36).substr(2, 9),
+        submittedAt: new Date().toISOString()
+      };
+      data.submissions.push(newSubmission);
+    }
+    
     saveData(data);
     return newSubmission;
   },
@@ -254,5 +301,42 @@ export const mockProvider: DataProvider = {
   },
   testConnection: async () => {
     return { ok: true, message: 'Mock connection is always OK' };
+  },
+
+  awardXP: async (userId, amount) => {
+    const data = getData();
+    const index = data.users.findIndex(u => u.id === userId);
+    if (index === -1) throw new Error('User not found');
+    const user = data.users[index];
+    user.xp = (user.xp || 0) + amount;
+    user.level = Math.floor(Math.sqrt(user.xp / 100)) + 1;
+    data.users[index] = user;
+    saveData(data);
+    if (currentUser?.id === userId) {
+      currentUser = user;
+      localStorage.setItem('lms_current_user', JSON.stringify(user));
+    }
+    return user;
+  },
+  awardBadge: async (userId: string, badge: Omit<Badge, 'unlockedAt'>) => {
+    const data = getData();
+    const index = data.users.findIndex(u => u.id === userId);
+    if (index === -1) throw new Error('User not found');
+    const user = data.users[index];
+    if (!user.badges) user.badges = [];
+    if (user.badges.some(b => b.id === badge.id)) return user;
+    const newBadge = { ...badge, unlockedAt: new Date().toISOString() };
+    user.badges.push(newBadge);
+    data.users[index] = user;
+    saveData(data);
+    if (currentUser?.id === userId) {
+      currentUser = user;
+      localStorage.setItem('lms_current_user', JSON.stringify(user));
+    }
+    return user;
+  },
+  getLeaderboard: async () => {
+    const data = getData();
+    return data.users.filter(u => u.role === 'student').sort((a, b) => (b.xp || 0) - (a.xp || 0));
   }
 };

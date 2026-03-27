@@ -6,27 +6,7 @@ import { ArrowLeft, Search, CheckCircle, XCircle, Clock, FileText, Users, Sparkl
 import { Modal } from '../../components/Modal';
 import { GoogleGenAI, Type } from '@google/genai';
 import { SubmissionDetailModal } from './SubmissionDetailModal';
-
-const parseTruncatedJSON = (jsonString: string) => {
-  try {
-    return JSON.parse(jsonString);
-  } catch (e: any) {
-    if (e.message.includes('Unterminated string') || e.message.includes('Unexpected end of JSON input') || e.message.includes('Expected')) {
-      let fixedString = jsonString;
-      while (fixedString.length > 0) {
-        const lastBrace = fixedString.lastIndexOf('}');
-        if (lastBrace === -1) break;
-        fixedString = fixedString.substring(0, lastBrace + 1) + ']';
-        try {
-          return JSON.parse(fixedString);
-        } catch (err) {
-          fixedString = fixedString.substring(0, lastBrace);
-        }
-      }
-    }
-    throw e;
-  }
-};
+import { parseTruncatedJSON } from '../../utils/jsonUtils';
 
 export const TestSubmissions: React.FC = () => {
   const { id } = useParams<{ id: string }>();

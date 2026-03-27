@@ -4,6 +4,7 @@ import { BankQuestion, Subject, Topic, QuestionType, QuestionDifficulty } from '
 import { Plus, Edit2, Trash2, Search, Filter, Sparkles, Upload, Loader2, Save, X, Download, FileText } from 'lucide-react';
 import { Modal } from '../../components/Modal';
 import { GoogleGenAI, Type } from '@google/genai';
+import { parseTruncatedJSON } from '../../utils/jsonUtils';
 
 export const QuestionBank: React.FC = () => {
   const [questions, setQuestions] = useState<BankQuestion[]>([]);
@@ -19,6 +20,7 @@ export const QuestionBank: React.FC = () => {
   const [isQuestionModalOpen, setIsQuestionModalOpen] = useState(false);
   const [isAIGenModalOpen, setIsAIGenModalOpen] = useState(false);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
 
   // Form states
   const [editingQuestion, setEditingQuestion] = useState<BankQuestion | null>(null);
@@ -35,6 +37,7 @@ export const QuestionBank: React.FC = () => {
 
   // AI Gen state
   const [aiPrompt, setAiPrompt] = useState('');
+  const [aiFile, setAiFile] = useState<File | null>(null);
   const [aiConfig, setAiConfig] = useState({
     subjectId: '',
     topicId: '',
@@ -160,36 +163,15 @@ LƯU Ý:
     }
   };
 
-  const handleDeleteQuestion = async (id: string) => {
-    if (window.confirm('Bạn có chắc chắn muốn xóa câu hỏi này?')) {
+  const handleDeleteQuestion = async () => {
+    if (confirmDelete) {
       try {
-        await dataProvider.delete('bank_questions', id);
+        await dataProvider.delete('bank_questions', confirmDelete);
+        setConfirmDelete(null);
         fetchData();
       } catch (error) {
         console.error("Error deleting question", error);
       }
-    }
-  };
-
-  const parseTruncatedJSON = (jsonString: string) => {
-    if (!jsonString) return [];
-    try {
-      return JSON.parse(jsonString);
-    } catch (e: any) {
-      if (e.message.includes('Unterminated string') || e.message.includes('Unexpected end of JSON input') || e.message.includes('Expected')) {
-        let fixedString = jsonString;
-        while (fixedString && fixedString.length > 0) {
-          const lastBrace = fixedString.lastIndexOf('}');
-          if (lastBrace === -1) break;
-          fixedString = fixedString.substring(0, lastBrace + 1) + ']';
-          try {
-            return JSON.parse(fixedString);
-          } catch (err) {
-            fixedString = fixedString.substring(0, lastBrace);
-          }
-        }
-      }
-      throw e;
     }
   };
 
@@ -200,9 +182,31 @@ LƯU Ý:
     try {
       const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
       
-      const prompt = `Tạo ${aiConfig.count} câu hỏi kiểm tra về chủ đề: "${aiPrompt}".
+      let parts: any[] = [];
       
-      Cấu trúc độ khó mong muốn:
+      if (aiFile) {
+        const fileReader = new FileReader();
+        const base64Promise = new Promise<string>((resolve) => {
+          fileReader.onload = () => {
+            const base64Data = (fileReader.result as string).split(',')[1];
+            resolve(base64Data);
+          };
+          fileReader.readAsDataURL(aiFile);
+        });
+        
+        const base64Data = await base64Promise;
+        parts.push({
+          inlineData: {
+            data: base64Data,
+            mimeType: "application/pdf"
+          }
+        });
+      }
+
+      const prompt = `Tạo ${aiConfig.count} câu hỏi kiểm tra ${aiFile ? 'dựa trên nội dung file PDF được cung cấp' : `về chủ đề: "${aiPrompt}"`}.
+      ${aiPrompt && aiFile ? `Yêu cầu bổ sung: ${aiPrompt}` : ''}
+      
+      BẠN PHẢI TẠO ĐÚNG SỐ LƯỢNG VÀ ĐỘ KHÓ NHƯ YÊU CẦU DƯỚI ĐÂY. KHÔNG ĐƯỢC THIẾU HOẶC THỪA:
       - Nhận biết: ${aiConfig.difficulties.recognition} câu
       - Thông hiểu: ${aiConfig.difficulties.understanding} câu
       - Vận dụng: ${aiConfig.difficulties.application} câu
@@ -226,9 +230,11 @@ LƯU Ý:
       }
       `;
 
+      parts.push({ text: prompt });
+
       const response = await ai.models.generateContent({
-        model: "gemini-3.1-pro-preview",
-        contents: prompt,
+        model: "gemini-3-flash-preview",
+        contents: { parts },
         config: {
           responseMimeType: "application/json",
           responseSchema: {
@@ -280,6 +286,8 @@ LƯU Ý:
       }
       
       setIsAIGenModalOpen(false);
+      setAiPrompt('');
+      setAiFile(null);
       fetchData();
       alert(`Đã tạo thành công ${generatedQuestions.length} câu hỏi!`);
     } catch (error) {
@@ -379,7 +387,7 @@ LƯU Ý:
         }
 
         const response = await ai.models.generateContent({
-          model: "gemini-3.1-pro-preview",
+          model: "gemini-3-flash-preview",
           contents: contents,
           config: {
             responseMimeType: "application/json",
@@ -581,7 +589,7 @@ LƯU Ý:
                       <Edit2 size={18} />
                     </button>
                     <button 
-                      onClick={() => handleDeleteQuestion(q.id)}
+                      onClick={() => setConfirmDelete(q.id)}
                       className="p-1.5 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                     >
                       <Trash2 size={18} />
@@ -862,15 +870,38 @@ LƯU Ý:
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Chủ đề / Nội dung cần tạo</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Chủ đề / Yêu cầu bổ sung</label>
             <textarea 
-              required
+              required={!aiFile}
               value={aiPrompt}
               onChange={e => setAiPrompt(e.target.value)}
-              placeholder="VD: Các thành phần cơ bản của máy tính, hệ điều hành Windows..."
+              placeholder={aiFile ? "Nhập yêu cầu bổ sung (VD: Tập trung vào phần X, tạo câu hỏi khó...)" : "VD: Các thành phần cơ bản của máy tính, hệ điều hành Windows..."}
               className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
               rows={3}
             />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Hoặc tải lên file PDF nội dung (Tùy chọn)</label>
+            <div className="mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-gray-300 border-dashed rounded-xl hover:bg-gray-50 transition-colors">
+              <div className="space-y-1 text-center">
+                <Upload className="mx-auto h-10 w-10 text-gray-400" />
+                <div className="flex text-sm text-gray-600 justify-center">
+                  <label htmlFor="ai-file-upload" className="relative cursor-pointer bg-white rounded-md font-medium text-indigo-600 hover:text-indigo-500 focus-within:outline-none focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-indigo-500">
+                    <span>{aiFile ? aiFile.name : 'Tải lên file PDF'}</span>
+                    <input 
+                      id="ai-file-upload" 
+                      name="ai-file-upload" 
+                      type="file" 
+                      className="sr-only" 
+                      accept=".pdf" 
+                      onChange={(e) => setAiFile(e.target.files?.[0] || null)}
+                    />
+                  </label>
+                </div>
+                <p className="text-xs text-gray-500">AI sẽ dựa vào nội dung file để tạo câu hỏi</p>
+              </div>
+            </div>
           </div>
 
           <div className="grid grid-cols-2 gap-6">
@@ -926,7 +957,7 @@ LƯU Ý:
             </button>
             <button 
               type="submit"
-              disabled={isGenerating || !aiPrompt || !aiConfig.subjectId}
+              disabled={isGenerating || (!aiPrompt && !aiFile) || !aiConfig.subjectId}
               className="flex items-center gap-2 px-4 py-2 text-white bg-indigo-600 rounded-xl hover:bg-indigo-700 transition-colors disabled:opacity-50"
             >
               {isGenerating ? (
@@ -1085,6 +1116,31 @@ LƯU Ý:
             </button>
           </div>
         </form>
+      </Modal>
+
+      {/* Modal Xác nhận xóa */}
+      <Modal
+        isOpen={confirmDelete !== null}
+        onClose={() => setConfirmDelete(null)}
+        title="Xác nhận xóa"
+      >
+        <div className="p-4">
+          <p className="text-gray-700 mb-6">Bạn có chắc chắn muốn xóa câu hỏi này không?</p>
+          <div className="flex justify-end gap-3">
+            <button
+              onClick={() => setConfirmDelete(null)}
+              className="px-4 py-2 text-gray-700 bg-gray-100 rounded-xl hover:bg-gray-200 transition-colors"
+            >
+              Hủy
+            </button>
+            <button
+              onClick={handleDeleteQuestion}
+              className="px-4 py-2 text-white bg-red-600 rounded-xl hover:bg-red-700 transition-colors"
+            >
+              Xóa
+            </button>
+          </div>
+        </div>
       </Modal>
     </div>
   );

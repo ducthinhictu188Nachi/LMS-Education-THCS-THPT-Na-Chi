@@ -4,27 +4,7 @@ import { Subject, Topic, Lesson } from '../../core/types';
 import { Modal } from '../../components/Modal';
 import { Plus, Search, Edit2, Trash2, ChevronDown, ChevronRight, FileUp, BookOpen, Loader2 } from 'lucide-react';
 import { GoogleGenAI, Type, ThinkingLevel } from '@google/genai';
-
-const parseTruncatedJSON = (jsonString: string) => {
-  try {
-    return JSON.parse(jsonString);
-  } catch (e: any) {
-    if (e.message.includes('Unterminated string') || e.message.includes('Unexpected end of JSON input') || e.message.includes('Expected')) {
-      let fixedString = jsonString;
-      while (fixedString.length > 0) {
-        const lastBrace = fixedString.lastIndexOf('}');
-        if (lastBrace === -1) break;
-        fixedString = fixedString.substring(0, lastBrace + 1) + ']';
-        try {
-          return JSON.parse(fixedString);
-        } catch (err) {
-          fixedString = fixedString.substring(0, lastBrace);
-        }
-      }
-    }
-    throw e;
-  }
-};
+import { parseTruncatedJSON } from '../../utils/jsonUtils';
 
 export const SubjectManagement: React.FC = () => {
   const [subjects, setSubjects] = useState<Subject[]>([]);
@@ -286,11 +266,11 @@ Trả về mảng JSON gồm các object có 'name' (Tên chương/chủ đề),
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <h2 className="text-2xl font-bold text-gray-900">Môn học & Chủ đề</h2>
         <button 
           onClick={() => handleOpenSubjectModal()}
-          className="flex items-center gap-2 bg-[#d97706] text-white px-5 py-2.5 rounded-xl font-semibold shadow-[0_4px_0_#b45309] hover:translate-y-[2px] hover:shadow-[0_2px_0_#b45309] active:translate-y-[4px] active:shadow-[0_0px_0_#b45309] transition-all"
+          className="w-full sm:w-auto flex items-center justify-center gap-2 bg-[#d97706] text-white px-5 py-2.5 rounded-xl font-semibold shadow-[0_4px_0_#b45309] hover:translate-y-[2px] hover:shadow-[0_2px_0_#b45309] active:translate-y-[4px] active:shadow-[0_0px_0_#b45309] transition-all"
         >
           <Plus size={20} />
           <span>Thêm môn học</span>
@@ -311,7 +291,7 @@ Trả về mảng JSON gồm các object có 'name' (Tên chương/chủ đề),
           </div>
         </div>
 
-        <div className="p-4 space-y-4">
+        <div className="p-2 sm:p-4 space-y-4">
           {filteredSubjects.length > 0 ? filteredSubjects.map(subject => {
             const isExpanded = expandedSubject === subject.id;
             const subjectTopics = topics.filter(t => t.subjectId === subject.id).sort((a, b) => a.order - b.order);
@@ -320,105 +300,107 @@ Trả về mảng JSON gồm các object có 'name' (Tên chương/chủ đề),
               <div key={subject.id} className="border border-gray-200 rounded-xl overflow-hidden">
                 {/* Subject Header */}
                 <div 
-                  className="flex items-center justify-between p-4 bg-gray-50 hover:bg-gray-100 cursor-pointer transition-colors"
+                  className="flex items-center justify-between p-3 sm:p-4 bg-gray-50 hover:bg-gray-100 cursor-pointer transition-colors"
                   onClick={() => setExpandedSubject(isExpanded ? null : subject.id)}
                 >
-                  <div className="flex items-center gap-3">
-                    {isExpanded ? <ChevronDown size={20} className="text-gray-500" /> : <ChevronRight size={20} className="text-gray-500" />}
-                    <div className="w-10 h-10 bg-indigo-100 text-indigo-600 rounded-lg flex items-center justify-center">
-                      <BookOpen size={20} />
+                  <div className="flex items-center gap-2 sm:gap-3">
+                    {isExpanded ? <ChevronDown size={18} className="text-gray-500" /> : <ChevronRight size={18} className="text-gray-500" />}
+                    <div className="w-8 h-8 sm:w-10 sm:h-10 bg-indigo-100 text-indigo-600 rounded-lg flex items-center justify-center shrink-0">
+                      <BookOpen size={18} />
                     </div>
-                    <div>
-                      <h3 className="font-bold text-gray-900">{subject.name}</h3>
-                      <p className="text-sm text-gray-500">{subjectTopics.length} chủ đề</p>
+                    <div className="min-w-0">
+                      <h3 className="font-bold text-gray-900 text-sm sm:text-base truncate">{subject.name}</h3>
+                      <p className="text-xs text-gray-500">{subjectTopics.length} chủ đề</p>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1 sm:gap-2">
                     <button 
                       onClick={(e) => { e.stopPropagation(); handleOpenSubjectModal(subject); }}
-                      className="p-2 text-indigo-600 hover:bg-indigo-100 rounded-lg transition-colors"
+                      className="p-1.5 sm:p-2 text-indigo-600 hover:bg-indigo-100 rounded-lg transition-colors"
                       title="Sửa môn học"
                     >
-                      <Edit2 size={18} />
+                      <Edit2 size={16} />
                     </button>
                     <button 
                       onClick={(e) => handleDeleteSubject(subject.id, e)}
-                      className="p-2 text-red-600 hover:bg-red-100 rounded-lg transition-colors"
+                      className="p-1.5 sm:p-2 text-red-600 hover:bg-red-100 rounded-lg transition-colors"
                       title="Xóa môn học"
                     >
-                      <Trash2 size={18} />
+                      <Trash2 size={16} />
                     </button>
                   </div>
                 </div>
 
                 {/* Topics List */}
                 {isExpanded && (
-                  <div className="p-4 bg-white border-t border-gray-200">
-                    <div className="flex justify-between items-center mb-4">
-                      <h4 className="font-semibold text-gray-700">Danh sách Chủ đề / Chương</h4>
-                      <div className="flex gap-2">
+                  <div className="p-3 sm:p-4 bg-white border-t border-gray-200">
+                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-4">
+                      <h4 className="font-semibold text-gray-700 text-sm sm:text-base">Danh sách Chủ đề / Chương</h4>
+                      <div className="flex gap-2 w-full sm:w-auto">
                         <button 
                           onClick={() => { setSelectedSubjectId(subject.id); setIsImportModalOpen(true); }}
-                          className="flex items-center gap-1 px-3 py-1.5 text-sm font-medium text-emerald-700 bg-emerald-50 rounded-lg hover:bg-emerald-100 transition-colors"
+                          className="flex-1 sm:flex-none flex items-center justify-center gap-1 px-3 py-1.5 text-xs sm:text-sm font-medium text-emerald-700 bg-emerald-50 rounded-lg hover:bg-emerald-100 transition-colors"
                         >
-                          <FileUp size={16} />
-                          Nhập từ PDF
+                          <FileUp size={14} />
+                          Nhập PDF
                         </button>
                         <button 
                           onClick={() => handleOpenTopicModal(subject.id)}
-                          className="flex items-center gap-1 px-3 py-1.5 text-sm font-medium text-indigo-700 bg-indigo-50 rounded-lg hover:bg-indigo-100 transition-colors"
+                          className="flex-1 sm:flex-none flex items-center justify-center gap-1 px-3 py-1.5 text-xs sm:text-sm font-medium text-indigo-700 bg-indigo-50 rounded-lg hover:bg-indigo-100 transition-colors"
                         >
-                          <Plus size={16} />
+                          <Plus size={14} />
                           Thêm chủ đề
                         </button>
                       </div>
                     </div>
 
                     {subjectTopics.length > 0 ? (
-                      <table className="w-full text-left border-collapse">
-                        <thead>
-                          <tr className="border-b border-gray-200">
-                            <th className="py-2 px-4 text-sm font-semibold text-gray-600 w-16">STT</th>
-                            <th className="py-2 px-4 text-sm font-semibold text-gray-600">Tên chủ đề</th>
-                            <th className="py-2 px-4 text-sm font-semibold text-gray-600 text-right">Hành động</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {subjectTopics.map(topic => {
-                            const topicLessons = lessons.filter(l => l.topicId === topic.id);
-                            return (
-                            <tr key={topic.id} className="border-b border-gray-100 hover:bg-gray-50">
-                              <td className="py-3 px-4 text-gray-600">{topic.order}</td>
-                              <td className="py-3 px-4 font-medium text-gray-900">
-                                {topic.name}
-                                {topicLessons.length > 0 && (
-                                  <span className="ml-2 text-xs font-normal text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
-                                    {topicLessons.length} bài học
-                                  </span>
-                                )}
-                              </td>
-                              <td className="py-3 px-4 text-right">
-                                <div className="flex items-center justify-end gap-2">
-                                  <button 
-                                    onClick={() => handleOpenTopicModal(subject.id, topic)}
-                                    className="p-1.5 text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
-                                  >
-                                    <Edit2 size={16} />
-                                  </button>
-                                  <button 
-                                    onClick={(e) => handleDeleteTopic(topic.id, e)}
-                                    className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                                  >
-                                    <Trash2 size={16} />
-                                  </button>
-                                </div>
-                              </td>
+                      <div className="overflow-x-auto no-scrollbar">
+                        <table className="w-full text-left border-collapse min-w-[400px]">
+                          <thead>
+                            <tr className="border-b border-gray-200">
+                              <th className="py-2 px-2 sm:px-4 text-xs sm:text-sm font-semibold text-gray-600 w-12 sm:w-16">STT</th>
+                              <th className="py-2 px-2 sm:px-4 text-xs sm:text-sm font-semibold text-gray-600">Tên chủ đề</th>
+                              <th className="py-2 px-2 sm:px-4 text-xs sm:text-sm font-semibold text-gray-600 text-right">Hành động</th>
                             </tr>
-                          )})}
-                        </tbody>
-                      </table>
+                          </thead>
+                          <tbody>
+                            {subjectTopics.map(topic => {
+                              const topicLessons = lessons.filter(l => l.topicId === topic.id);
+                              return (
+                              <tr key={topic.id} className="border-b border-gray-100 hover:bg-gray-50">
+                                <td className="py-3 px-2 sm:px-4 text-xs sm:text-sm text-gray-600">{topic.order}</td>
+                                <td className="py-3 px-2 sm:px-4 font-medium text-gray-900 text-xs sm:text-sm">
+                                  {topic.name}
+                                  {topicLessons.length > 0 && (
+                                    <span className="ml-2 text-[10px] font-normal text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
+                                      {topicLessons.length} bài học
+                                    </span>
+                                  )}
+                                </td>
+                                <td className="py-3 px-2 sm:px-4 text-right">
+                                  <div className="flex items-center justify-end gap-1 sm:gap-2">
+                                    <button 
+                                      onClick={() => handleOpenTopicModal(subject.id, topic)}
+                                      className="p-1.5 text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+                                    >
+                                      <Edit2 size={14} />
+                                    </button>
+                                    <button 
+                                      onClick={(e) => handleDeleteTopic(topic.id, e)}
+                                      className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                    >
+                                      <Trash2 size={14} />
+                                    </button>
+                                  </div>
+                                </td>
+                              </tr>
+                            )})}
+                          </tbody>
+                        </table>
+                      </div>
                     ) : (
-                      <p className="text-center text-gray-500 py-4">Chưa có chủ đề nào. Hãy thêm mới hoặc nhập từ PDF.</p>
+                      <p className="text-center text-gray-500 py-4 text-sm">Chưa có chủ đề nào. Hãy thêm mới hoặc nhập từ PDF.</p>
                     )}
                   </div>
                 )}

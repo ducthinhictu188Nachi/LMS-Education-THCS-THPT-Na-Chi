@@ -76,11 +76,11 @@ export const ClassManagement: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <h2 className="text-2xl font-bold text-gray-900">Quản lý Lớp học</h2>
         <button 
           onClick={() => handleOpenModal()}
-          className="flex items-center gap-2 bg-[#1a7a53] text-white px-5 py-2.5 rounded-xl font-semibold shadow-[0_4px_0_#115e3e] hover:translate-y-[2px] hover:shadow-[0_2px_0_#115e3e] active:translate-y-[4px] active:shadow-[0_0px_0_#115e3e] transition-all"
+          className="w-full sm:w-auto flex items-center justify-center gap-2 bg-[#1a7a53] text-white px-5 py-2.5 rounded-xl font-semibold shadow-[0_4px_0_#115e3e] hover:translate-y-[2px] hover:shadow-[0_2px_0_#115e3e] active:translate-y-[4px] active:shadow-[0_0px_0_#115e3e] transition-all"
         >
           <Plus size={20} />
           <span>Thêm lớp học</span>
@@ -101,25 +101,25 @@ export const ClassManagement: React.FC = () => {
           </div>
         </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
+        <div className="overflow-x-auto no-scrollbar">
+          <table className="w-full text-left border-collapse min-w-[600px]">
             <thead>
               <tr className="bg-gray-50 border-b border-gray-200">
-                <th className="py-3 px-6 text-sm font-semibold text-gray-600">Tên lớp</th>
-                <th className="py-3 px-6 text-sm font-semibold text-gray-600">Khối</th>
-                <th className="py-3 px-6 text-sm font-semibold text-gray-600">GVCN</th>
-                <th className="py-3 px-6 text-sm font-semibold text-gray-600">Niên khóa</th>
-                <th className="py-3 px-6 text-sm font-semibold text-gray-600 text-right">Hành động</th>
+                <th className="py-3 px-4 sm:px-6 text-sm font-semibold text-gray-600">Tên lớp</th>
+                <th className="py-3 px-4 sm:px-6 text-sm font-semibold text-gray-600">Khối</th>
+                <th className="py-3 px-4 sm:px-6 text-sm font-semibold text-gray-600">GVCN</th>
+                <th className="py-3 px-4 sm:px-6 text-sm font-semibold text-gray-600">Năm học</th>
+                <th className="py-3 px-4 sm:px-6 text-sm font-semibold text-gray-600 text-right">Hành động</th>
               </tr>
             </thead>
             <tbody>
               {filteredClasses.length > 0 ? filteredClasses.map(cls => (
                 <tr key={cls.id} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
-                  <td className="py-4 px-6 font-medium text-gray-900">{cls.name}</td>
-                  <td className="py-4 px-6 text-gray-600">{cls.grade}</td>
-                  <td className="py-4 px-6 text-gray-600">{cls.teacherName || '-'}</td>
-                  <td className="py-4 px-6 text-gray-600">{cls.academicYear || '-'}</td>
-                  <td className="py-4 px-6 text-right">
+                  <td className="py-4 px-4 sm:px-6 font-medium text-gray-900">{cls.name}</td>
+                  <td className="py-4 px-4 sm:px-6 text-gray-600">{cls.grade}</td>
+                  <td className="py-4 px-4 sm:px-6 text-gray-600">{cls.teacherName || '-'}</td>
+                  <td className="py-4 px-4 sm:px-6 text-gray-600">{cls.academicYear || '-'}</td>
+                  <td className="py-4 px-4 sm:px-6 text-right">
                     <div className="flex items-center justify-end gap-2">
                       <button 
                         onClick={() => handleOpenModal(cls)}
@@ -189,7 +189,7 @@ export const ClassManagement: React.FC = () => {
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Niên khóa</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Năm học</label>
             <input 
               type="text" 
               required

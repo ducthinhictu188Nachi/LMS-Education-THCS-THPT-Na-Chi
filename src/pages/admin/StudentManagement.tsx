@@ -88,7 +88,7 @@ export const StudentManagement: React.FC = () => {
 
   const grades = [10, 11, 12];
   
-  const classStudents = students.filter(s => s.classId === selectedClassId);
+  const classStudents = students.filter(s => String(s.classId) === String(selectedClassId));
   const filteredStudents = classStudents.filter(s => 
     s.fullName?.toLowerCase().includes(search.toLowerCase()) ||
     s.username?.toLowerCase().includes(search.toLowerCase())
@@ -96,11 +96,11 @@ export const StudentManagement: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <h2 className="text-2xl font-bold text-gray-900">Quản lý Học sinh</h2>
         <button 
           onClick={() => handleOpenModal()}
-          className="flex items-center gap-2 bg-[#1a7a53] text-white px-5 py-2.5 rounded-xl font-semibold shadow-[0_4px_0_#115e3e] hover:translate-y-[2px] hover:shadow-[0_2px_0_#115e3e] active:translate-y-[4px] active:shadow-[0_0px_0_#115e3e] transition-all"
+          className="w-full sm:w-auto flex items-center justify-center gap-2 bg-[#1a7a53] text-white px-5 py-2.5 rounded-xl font-semibold shadow-[0_4px_0_#115e3e] hover:translate-y-[2px] hover:shadow-[0_2px_0_#115e3e] active:translate-y-[4px] active:shadow-[0_0px_0_#115e3e] transition-all"
         >
           <Plus size={20} />
           <span>Thêm học sinh</span>
@@ -108,7 +108,7 @@ export const StudentManagement: React.FC = () => {
       </div>
 
       {/* Grade Selection */}
-      <div className="flex gap-4">
+      <div className="grid grid-cols-1 xs:grid-cols-3 gap-4">
         {grades.map(grade => (
           <button
             key={grade}
@@ -117,7 +117,7 @@ export const StudentManagement: React.FC = () => {
               setSelectedClassId(null);
               setSearch('');
             }}
-            className={`flex-1 py-4 rounded-2xl font-bold text-lg transition-all border-2 flex items-center justify-center gap-2 ${
+            className={`py-4 rounded-2xl font-bold text-lg transition-all border-2 flex items-center justify-center gap-2 ${
               selectedGrade === grade 
                 ? 'bg-[#2563eb] text-white border-[#1e40af] shadow-[0_6px_0_#1e40af] translate-y-[2px]' 
                 : 'bg-white text-gray-700 border-gray-200 hover:border-blue-300 hover:bg-blue-50 shadow-[0_6px_0_#e5e7eb]'
@@ -131,13 +131,13 @@ export const StudentManagement: React.FC = () => {
 
       {/* Class Selection */}
       {selectedGrade && (
-        <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-6 animate-in fade-in slide-in-from-top-4 duration-300">
+        <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-4 sm:p-6 animate-in fade-in slide-in-from-top-4 duration-300">
           <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
             <Users className="text-blue-600" size={24} />
             Chọn lớp thuộc Khối {selectedGrade}
           </h3>
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
-            {classes.filter(c => c.grade === selectedGrade).map(cls => (
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
+            {classes.filter(c => String(c.grade) === String(selectedGrade)).map(cls => (
               <button
                 key={cls.id}
                 onClick={() => {
@@ -152,11 +152,11 @@ export const StudentManagement: React.FC = () => {
               >
                 <span className="font-black text-xl mb-1">{cls.name}</span>
                 <span className={`text-xs font-medium px-2 py-1 rounded-full ${selectedClassId === cls.id ? 'bg-white/20 text-white' : 'bg-gray-200 text-gray-600'}`}>
-                  {students.filter(s => s.classId === cls.id).length} học sinh
+                  {students.filter(s => String(s.classId) === String(cls.id)).length} học sinh
                 </span>
               </button>
             ))}
-            {classes.filter(c => c.grade === selectedGrade).length === 0 && (
+            {classes.filter(c => String(c.grade) === String(selectedGrade)).length === 0 && (
               <p className="text-gray-500 col-span-full py-4 text-center bg-gray-50 rounded-xl border border-dashed border-gray-300">
                 Chưa có lớp nào trong khối này.
               </p>
@@ -171,7 +171,7 @@ export const StudentManagement: React.FC = () => {
           <div className="p-5 border-b border-gray-100 flex flex-col sm:flex-row justify-between items-center gap-4 bg-gray-50/50">
             <div>
               <h3 className="text-xl font-bold text-gray-900">
-                Danh sách học sinh lớp {classes.find(c => c.id === selectedClassId)?.name}
+                Danh sách học sinh lớp {classes.find(c => String(c.id) === String(selectedClassId))?.name}
               </h3>
               <p className="text-sm text-gray-500 mt-1">Tổng số: {classStudents.length} học sinh</p>
             </div>

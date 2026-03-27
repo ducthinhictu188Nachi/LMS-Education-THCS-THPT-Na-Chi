@@ -60,9 +60,9 @@ export const Login: React.FC = () => {
               }}
             />
           </div>
-          <h2 className="text-xl font-bold mb-8 tracking-wide text-center">THCS và THPT Nà Chì</h2>
+          <h2 className="text-xl font-bold mb-8 tracking-wide text-center">THCS và THPT NÀ CHÌ</h2>
           
-          <h1 className="text-4xl font-bold mb-4 text-center">Chào mừng trở lại!</h1>
+          <h1 className="text-3xl font-bold mb-3 text-center">CHÀO MỪNG BẠN TRỞ LẠI!</h1>
           <p className="text-center text-sm mb-10 px-4 opacity-90 leading-relaxed">
             Để duy trì kết nối với chúng tôi<br/>vui lòng đăng nhập bằng thông tin cá nhân của bạn
           </p>
@@ -132,9 +132,21 @@ export const Login: React.FC = () => {
             </button>
           </form>
           
-          <p className="mt-8 text-sm text-gray-500">
-            Don't have an account? <a href="#" className="text-[#1a7a53] font-semibold">sign up</a>
-          </p>
+          <div className="mt-8 text-sm text-center">
+            <p className="text-gray-500 mb-2">Tài khoản mặc định:</p>
+            <p className="text-[#1a7a53] font-medium">Giáo viên: <span className="font-bold">admin</span> / 123</p>
+            <p className="text-[#1a7a53] font-medium mb-4">Học sinh: <span className="font-bold">student</span> / 123</p>
+            <button 
+              type="button" 
+              onClick={() => {
+                localStorage.clear();
+                window.location.reload();
+              }}
+              className="text-xs text-red-500 hover:text-red-700 underline mt-2"
+            >
+              Khôi phục dữ liệu gốc (Nếu lỗi đăng nhập)
+            </button>
+          </div>
 
         </div>
       </div>

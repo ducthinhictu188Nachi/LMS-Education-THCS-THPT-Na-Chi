@@ -4,6 +4,7 @@ import { Modal } from '../../components/Modal';
 import { Sparkles, Upload, Loader2, Save, CheckCircle, XCircle, AlertCircle } from 'lucide-react';
 import { GoogleGenAI, Type } from '@google/genai';
 import { dataProvider } from '../../core/provider';
+import { parseTruncatedJSON } from '../../utils/jsonUtils';
 
 interface SubmissionDetailModalProps {
   isOpen: boolean;
@@ -12,27 +13,6 @@ interface SubmissionDetailModalProps {
   submission: (Submission & { student?: User, class?: Class }) | null;
   onSaved: () => void;
 }
-
-const parseTruncatedJSON = (jsonString: string) => {
-  try {
-    return JSON.parse(jsonString);
-  } catch (e: any) {
-    if (e.message.includes('Unterminated string') || e.message.includes('Unexpected end of JSON input') || e.message.includes('Expected')) {
-      let fixedString = jsonString;
-      while (fixedString.length > 0) {
-        const lastBrace = fixedString.lastIndexOf('}');
-        if (lastBrace === -1) break;
-        fixedString = fixedString.substring(0, lastBrace + 1) + ']';
-        try {
-          return JSON.parse(fixedString);
-        } catch (err) {
-          fixedString = fixedString.substring(0, lastBrace);
-        }
-      }
-    }
-    throw e;
-  }
-};
 
 export const SubmissionDetailModal: React.FC<SubmissionDetailModalProps> = ({
   isOpen,
@@ -51,7 +31,14 @@ export const SubmissionDetailModal: React.FC<SubmissionDetailModalProps> = ({
 
   useEffect(() => {
     if (submission) {
-      const parsedAnswers = submission.content ? JSON.parse(submission.content) : {};
+      let parsedAnswers = {};
+      try {
+        parsedAnswers = submission.content 
+          ? (typeof submission.content === 'string' ? JSON.parse(submission.content) : submission.content) 
+          : {};
+      } catch (e) {
+        console.error("Error parsing submission content:", e);
+      }
       setAnswers(parsedAnswers);
       
       const initialScores: Record<string, number> = {};

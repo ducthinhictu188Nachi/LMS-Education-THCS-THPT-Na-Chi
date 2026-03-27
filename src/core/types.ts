@@ -1,5 +1,13 @@
 export type Role = 'teacher' | 'student';
 
+export interface Badge {
+  id: string;
+  name: string;
+  description: string;
+  icon: string;
+  unlockedAt: string;
+}
+
 export interface User {
   id: string;
   username: string;
@@ -8,6 +16,9 @@ export interface User {
   role: Role;
   classId?: string; // For students
   dob?: string; // Ngày sinh
+  xp?: number;
+  badges?: Badge[];
+  level?: number;
 }
 
 export interface Subject {
@@ -22,7 +33,7 @@ export interface Class {
   grade: number;
   teacherId: string;
   teacherName?: string; // Tên GVCN
-  academicYear?: string; // Niên khóa
+  academicYear?: string; // Năm học
 }
 
 export interface Topic {
@@ -32,9 +43,20 @@ export interface Topic {
   order: number;
 }
 
+export type InteractiveQuestionType = 'mcq' | 'true_false' | 'fill_in_the_blank' | 'drag_drop' | 'click_reveal';
+
+export interface InteractiveQuestion {
+  id: string;
+  type: InteractiveQuestionType;
+  question: string;
+  options?: string[]; // For MCQ
+  correctAnswer?: string | string[]; // For MCQ, True/False, Fill-in-the-blank
+  explanation?: string;
+}
+
 export interface InteractiveBlock {
   id: string;
-  type: 'text' | 'video' | 'quiz' | 'code' | 'image';
+  type: 'text' | 'video' | 'quiz' | 'code' | 'image' | 'interactive_question';
   data: {
     content?: string;
     url?: string;
@@ -43,7 +65,13 @@ export interface InteractiveBlock {
     options?: string[]; // for quiz
     correctAnswer?: string; // for quiz
     caption?: string; // for image/video
+    interactiveQuestion?: InteractiveQuestion; // for interactive_question
   };
+}
+
+export interface TeacherFeedback {
+  comment: string;
+  date: string;
 }
 
 export interface Lesson {
@@ -72,6 +100,11 @@ export interface Assignment {
   topicId?: string;
   studentIds?: string[];
   attachments?: string[];
+  questions?: Question[];
+  part1?: string;
+  part2?: string;
+  part3?: string;
+  part4?: string;
 }
 
 export type QuestionType = 'multiple_choice' | 'true_false' | 'short_answer' | 'essay';
@@ -124,6 +157,10 @@ export interface Submission {
   testId?: string;
   studentId: string;
   content: string;
+  part1Content?: string;
+  part2Content?: string;
+  part3Content?: string;
+  part4Content?: string;
   fileName?: string;
   fileUrl?: string;
   submittedAt: string;
@@ -137,6 +174,9 @@ export interface Progress {
   lessonId: string;
   completed: boolean;
   completedAt?: string;
+  lastAccessed?: string;
+  quizScores?: Record<string, number>;
+  teacherFeedback?: TeacherFeedback;
 }
 
 export interface Announcement {

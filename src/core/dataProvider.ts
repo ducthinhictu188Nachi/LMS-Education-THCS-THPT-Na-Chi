@@ -1,4 +1,4 @@
-import { User, Class, Subject, Topic, Lesson, Assignment, Test, Submission, Progress, Announcement } from './types';
+import { User, Class, Subject, Topic, Lesson, Assignment, Test, Submission, Progress, Announcement, Badge } from './types';
 
 export interface DataProvider {
   // Auth
@@ -21,4 +21,9 @@ export interface DataProvider {
   getClassReport(classId: string): Promise<any>;
   syncWithGAS(): Promise<void>;
   testConnection(): Promise<{ ok: boolean, message: string }>;
+
+  // Gamification
+  awardXP(userId: string, amount: number): Promise<User>;
+  awardBadge(userId: string, badge: Omit<Badge, 'unlockedAt'>): Promise<User>;
+  getLeaderboard(): Promise<User[]>;
 }

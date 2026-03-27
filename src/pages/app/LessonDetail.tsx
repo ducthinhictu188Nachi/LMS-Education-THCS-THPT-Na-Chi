@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, CheckCircle, Clock, BookOpen, FileText, Send, AlertCircle, Upload, File as FileIcon, X, Video, HelpCircle, Code, Image as ImageIcon, Check } from 'lucide-react';
+import { ArrowLeft, CheckCircle, Clock, BookOpen, FileText, Send, AlertCircle, Upload, File as FileIcon, X, Video, HelpCircle, Code, Image as ImageIcon, Check, Sparkles, RefreshCw } from 'lucide-react';
 import { dataProvider } from '../../core/provider';
 import { Lesson, Progress, Assignment, Submission, InteractiveBlock } from '../../core/types';
+import { ensureArray } from '../../core/utils/data';
+import { AITutor } from '../../components/AITutor';
 
 export const LessonDetail = () => {
   const { id } = useParams<{ id: string }>();
@@ -34,6 +36,30 @@ export const LessonDetail = () => {
       const progData = await dataProvider.getList<Progress>('progresses');
       const userProgress = progData.find(p => p.studentId === user?.id && p.lessonId === id);
       setProgress(userProgress || null);
+
+      // Initialize quiz answers and feedback from progress
+      if (userProgress?.quizScores && lesData.interactiveContent) {
+        const answers: Record<string, string> = {};
+        const feedbacks: Record<string, { correct: boolean, message: string }> = {};
+        
+        lesData.interactiveContent.forEach(block => {
+          if (block.type === 'interactive_question' && block.data.interactiveQuestion) {
+            const score = userProgress.quizScores?.[block.id];
+            if (score !== undefined) {
+              const q = block.data.interactiveQuestion;
+              const isCorrect = score === 10;
+              const correctAnswer = Array.isArray(q.correctAnswer) ? q.correctAnswer[0] : q.correctAnswer;
+              answers[block.id] = isCorrect ? (correctAnswer || 'Đã trả lời') : 'Đã trả lời';
+              feedbacks[block.id] = {
+                correct: isCorrect,
+                message: isCorrect ? 'Chính xác! Chúc mừng bạn.' : `Chưa đúng. Đáp án đúng là: ${correctAnswer}. ${q.explanation || ''}`
+              };
+            }
+          }
+        });
+        setQuizAnswers(answers);
+        setQuizFeedback(feedbacks);
+      }
 
       // Fetch assignments for this lesson
       const allAssignments = await dataProvider.getList<Assignment>('assignments');
@@ -110,8 +136,11 @@ export const LessonDetail = () => {
         fileUrl: fileData?.base64
       });
       
+      // Award XP for assignment submission
+      await dataProvider.awardXP(user.id, 30);
+      
       setSubmissions(prev => ({ ...prev, [assignmentId]: newSubmission }));
-      alert('Nộp bài thành công!');
+      alert('Nộp bài thành công! Bạn nhận được 30 XP.');
     } catch (error) {
       console.error("Error submitting assignment:", error);
       alert('Có lỗi xảy ra khi nộp bài.');
@@ -126,27 +155,43 @@ export const LessonDetail = () => {
     setIsMarking(true);
     try {
       if (progress) {
-        // Already marked, maybe unmark? For now just keep it marked.
-        return;
+        if (progress.completed) return;
+        
+        const updatedProgress = {
+          ...progress,
+          completed: true,
+          completedAt: new Date().toISOString()
+        };
+        const updated = await dataProvider.update<Progress>('progresses', progress.id, updatedProgress);
+        setProgress(updated);
+      } else {
+        const newProgress: Omit<Progress, 'id'> = {
+          studentId: user.id,
+          lessonId: lesson.id,
+          completed: true,
+          completedAt: new Date().toISOString(),
+          quizScores: {}
+        };
+        
+        const created = await dataProvider.create<Progress>('progresses', newProgress);
+        setProgress(created);
       }
       
-      const newProgress: Omit<Progress, 'id'> = {
-        studentId: user.id,
-        lessonId: lesson.id,
-        completed: true,
-        completedAt: new Date().toISOString()
-      };
+      // Award XP for lesson completion
+      await dataProvider.awardXP(user.id, 50);
       
-      const created = await dataProvider.create<Progress>('progresses', newProgress);
-      setProgress(created);
+      alert('Chúc mừng! Bạn đã hoàn thành bài học và nhận được 50 XP.');
     } catch (error) {
       console.error("Error marking as learned:", error);
+      alert('Có lỗi xảy ra khi đánh dấu đã học.');
     } finally {
       setIsMarking(false);
     }
   };
 
-  const handleQuizSubmit = (blockId: string, selectedOption: string, correctAnswer: string) => {
+  const handleQuizSubmit = async (blockId: string, selectedOption: string, correctAnswer: string) => {
+    if (!user || !lesson) return;
+    
     setQuizAnswers(prev => ({ ...prev, [blockId]: selectedOption }));
     const isCorrect = selectedOption === correctAnswer;
     setQuizFeedback(prev => ({ 
@@ -156,6 +201,31 @@ export const LessonDetail = () => {
         message: isCorrect ? 'Chính xác! Chúc mừng bạn.' : `Chưa đúng rồi. Đáp án đúng là: ${correctAnswer}` 
       } 
     }));
+
+    // Update progress score
+    try {
+      if (isCorrect) {
+        await dataProvider.awardXP(user.id, 10);
+      }
+      
+      if (progress) {
+        const newScores = { ...(progress.quizScores || {}), [blockId]: isCorrect ? 10 : 0 };
+        const updatedProgress = { ...progress, quizScores: newScores };
+        const result = await dataProvider.update<Progress>('progresses', progress.id, updatedProgress);
+        setProgress(result);
+      } else {
+        const newProgress: Omit<Progress, 'id'> = {
+          studentId: user.id,
+          lessonId: lesson.id,
+          completed: false,
+          quizScores: { [blockId]: isCorrect ? 10 : 0 }
+        };
+        const created = await dataProvider.create<Progress>('progresses', newProgress);
+        setProgress(created);
+      }
+    } catch (error) {
+      console.error("Error updating progress with quiz score:", error);
+    }
   };
 
   const renderInteractiveBlock = (block: InteractiveBlock) => {
@@ -236,7 +306,7 @@ export const LessonDetail = () => {
             </div>
             <h4 className="text-lg font-bold text-gray-900 mb-4">{block.data.question}</h4>
             <div className="space-y-3">
-              {block.data.options?.map((option, idx) => (
+              {ensureArray(block.data.options).map((option, idx) => (
                 <button
                   key={idx}
                   onClick={() => !feedback && handleQuizSubmit(block.id, option, block.data.correctAnswer || '')}
@@ -269,9 +339,215 @@ export const LessonDetail = () => {
             )}
           </div>
         );
+      case 'interactive_question':
+        const iq = block.data.interactiveQuestion;
+        if (!iq) return null;
+        const iqSelected = quizAnswers[block.id];
+        const iqFeedback = quizFeedback[block.id];
+
+        const handleAnswer = async (answer: string, customFeedback?: { correct: boolean, message: string }) => {
+          if (iqFeedback) return; // Already answered
+          setQuizAnswers(prev => ({ ...prev, [block.id]: answer }));
+          
+          const isCorrect = customFeedback ? customFeedback.correct : (answer === iq.correctAnswer);
+          const feedbackMessage = customFeedback 
+            ? customFeedback.message 
+            : (isCorrect ? 'Chính xác! Chúc mừng bạn.' : `Chưa đúng. Đáp án đúng là: ${iq.correctAnswer}. ${iq.explanation || ''}`);
+
+          setQuizFeedback(prev => ({ 
+            ...prev, 
+            [block.id]: { 
+              correct: isCorrect, 
+              message: feedbackMessage
+            } 
+          }));
+
+          // Update progress score
+          try {
+            if (progress) {
+              const newScores = { ...(progress.quizScores || {}), [block.id]: isCorrect ? 10 : 0 };
+              const updatedProgress = { ...progress, quizScores: newScores };
+              const result = await dataProvider.update<Progress>('progresses', progress.id, updatedProgress);
+              setProgress(result);
+            } else if (user && lesson) {
+              const newProgress: Omit<Progress, 'id'> = {
+                studentId: user.id,
+                lessonId: lesson.id,
+                completed: false,
+                quizScores: { [block.id]: isCorrect ? 10 : 0 }
+              };
+              const created = await dataProvider.create<Progress>('progresses', newProgress);
+              setProgress(created);
+            }
+          } catch (error) {
+            console.error("Error updating progress with quiz score:", error);
+          }
+        };
+
+        return (
+          <div key={block.id} className="my-10 p-6 bg-indigo-50/30 border-2 border-indigo-100 rounded-2xl">
+            <div className="flex items-center gap-2 text-indigo-600 mb-3">
+              <HelpCircle size={20} />
+              <span className="text-sm font-bold uppercase tracking-wider">Câu hỏi tương tác</span>
+            </div>
+            <h4 className="text-lg font-bold text-gray-900 mb-6">{iq.question}</h4>
+            
+            {iq.type === 'mcq' && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {ensureArray(iq.options).map((option, idx) => (
+                  <button
+                    key={idx}
+                    onClick={() => handleAnswer(option)}
+                    disabled={!!iqFeedback}
+                    className={`w-full text-left p-4 rounded-xl border-2 transition-all duration-200 flex items-center justify-between ${
+                      iqSelected === option
+                        ? iqFeedback?.correct 
+                          ? 'border-emerald-500 bg-emerald-50 text-emerald-700 shadow-sm' 
+                          : 'border-red-500 bg-red-50 text-red-700 shadow-sm'
+                        : iqFeedback && option === iq.correctAnswer
+                        ? 'border-emerald-500 bg-emerald-50 text-emerald-700'
+                        : 'border-gray-200 bg-white hover:border-indigo-300 text-gray-700'
+                    }`}
+                  >
+                    <span className="font-medium">{option}</span>
+                    {iqSelected === option && (
+                      iqFeedback?.correct ? <Check size={18} /> : <X size={18} />
+                    )}
+                    {iqFeedback && option === iq.correctAnswer && iqSelected !== option && (
+                      <Check size={18} />
+                    )}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {iq.type === 'true_false' && (
+              <div className="flex gap-4">
+                {['Đúng', 'Sai'].map((option) => (
+                  <button
+                    key={option}
+                    onClick={() => handleAnswer(option)}
+                    disabled={!!iqFeedback}
+                    className={`flex-1 p-4 rounded-xl border-2 transition-all duration-200 font-bold ${
+                      iqSelected === option
+                        ? iqFeedback?.correct 
+                          ? 'border-emerald-500 bg-emerald-50 text-emerald-700' 
+                          : 'border-red-500 bg-red-50 text-red-700'
+                        : iqFeedback && option === iq.correctAnswer
+                        ? 'border-emerald-500 bg-emerald-50 text-emerald-700'
+                        : 'border-gray-200 bg-white hover:border-indigo-300 text-gray-700'
+                    }`}
+                  >
+                    {option}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {iq.type === 'fill_in_the_blank' && (
+              <div className="space-y-3">
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={iqSelected || ''}
+                    onChange={e => setQuizAnswers(prev => ({ ...prev, [block.id]: e.target.value }))}
+                    disabled={!!iqFeedback}
+                    className="flex-1 px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none"
+                    placeholder="Nhập câu trả lời của bạn..."
+                  />
+                  {!iqFeedback && (
+                    <button
+                      onClick={() => handleAnswer(iqSelected)}
+                      className="px-6 py-3 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 transition-colors"
+                    >
+                      Kiểm tra
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {iq.type === 'drag_drop' && (
+              <DragDropMatching 
+                options={ensureArray(iq.options)} 
+                explanation={iq.explanation}
+                onComplete={(isCorrect, message) => handleAnswer(isCorrect ? 'correct' : 'incorrect', { correct: isCorrect, message })}
+                disabled={!!iqFeedback}
+              />
+            )}
+
+            {iq.type === 'click_reveal' && (
+              <ClickRevealDiscovery 
+                options={ensureArray(iq.options)} 
+                correctAnswer={iq.correctAnswer || ''}
+                onComplete={() => handleAnswer('completed')}
+                disabled={!!iqFeedback}
+              />
+            )}
+
+            {iqFeedback && (
+              <div className={`mt-6 p-4 rounded-xl flex items-start gap-3 animate-in zoom-in-95 duration-300 ${iqFeedback.correct ? 'bg-emerald-100 text-emerald-800' : 'bg-red-100 text-red-800'}`}>
+                {iqFeedback.correct ? <CheckCircle size={20} className="mt-0.5" /> : <AlertCircle size={20} className="mt-0.5" />}
+                <div>
+                  <p className="font-bold">{iqFeedback.correct ? 'Tuyệt vời!' : 'Rất tiếc!'}</p>
+                  <p className="text-sm opacity-90">{iqFeedback.message}</p>
+                </div>
+              </div>
+            )}
+          </div>
+        );
       default:
         return null;
     }
+  };
+
+  const getEmbedUrl = (url: string) => {
+    if (!url) return null;
+    
+    // Google Slides
+    if (url.includes('docs.google.com/presentation/d/')) {
+      const baseUrl = url.split(/[?#]/)[0]; // Remove params
+      if (baseUrl.endsWith('/embed')) return baseUrl;
+      return baseUrl.replace(/\/edit$/, '').replace(/\/view$/, '') + '/embed';
+    }
+
+    // Google Drive File (PDF, PPTX, etc.)
+    if (url.includes('drive.google.com/file/d/')) {
+      const baseUrl = url.split(/[?#]/)[0];
+      if (baseUrl.endsWith('/preview')) return baseUrl;
+      return baseUrl.replace(/\/view$/, '').replace(/\/edit$/, '') + '/preview';
+    }
+    
+    // Office Online Viewer (better for direct .pptx links)
+    if (url.toLowerCase().endsWith('.pptx') || url.toLowerCase().endsWith('.ppt') || url.includes('onedrive.live.com')) {
+      return `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(url)}`;
+    }
+
+    // Fallback to Google Docs Viewer
+    return `https://docs.google.com/viewer?url=${encodeURIComponent(url)}&embedded=true`;
+  };
+
+  const getVideoEmbedUrl = (url: string) => {
+    if (!url) return null;
+    
+    // YouTube
+    if (url.includes('youtube.com/watch?v=')) {
+      const videoId = url.split('v=')[1].split('&')[0];
+      return `https://www.youtube.com/embed/${videoId}`;
+    }
+    if (url.includes('youtu.be/')) {
+      const videoId = url.split('youtu.be/')[1].split('?')[0];
+      return `https://www.youtube.com/embed/${videoId}`;
+    }
+    
+    // Google Drive Video
+    if (url.includes('drive.google.com/file/d/')) {
+      const baseUrl = url.split(/[?#]/)[0];
+      if (baseUrl.endsWith('/preview')) return baseUrl;
+      return baseUrl.replace(/\/view$/, '').replace(/\/edit$/, '') + '/preview';
+    }
+
+    return url;
   };
 
   if (!lesson) {
@@ -320,12 +596,59 @@ export const LessonDetail = () => {
 
         {/* Content */}
         <div className="p-8">
+          {progress?.teacherFeedback && (
+            <div className="mb-8 p-4 bg-amber-50 border border-amber-200 rounded-2xl flex items-start gap-3 animate-in fade-in slide-in-from-top-4 duration-500">
+              <Sparkles className="text-amber-600 mt-1 shrink-0" size={20} />
+              <div>
+                <h4 className="font-bold text-amber-900 text-sm mb-1">Nhận xét từ giáo viên</h4>
+                <p className="text-gray-700 text-sm leading-relaxed">{progress.teacherFeedback.comment}</p>
+                <p className="text-[10px] text-amber-600 mt-2">
+                  Ngày gửi: {new Date(progress.teacherFeedback.date).toLocaleDateString('vi-VN')}
+                </p>
+              </div>
+            </div>
+          )}
+
           <div className="prose prose-indigo max-w-none">
             <h3 className="text-lg font-semibold text-gray-900 mb-4 border-b pb-2">Nội dung / Yêu cầu cần đạt</h3>
             <div className="text-gray-700 whitespace-pre-wrap leading-relaxed bg-gray-50 p-6 rounded-xl border border-gray-100">
               {lesson.content}
             </div>
           </div>
+
+          {lesson.videoUrl && (
+            <div className="mt-8 p-6 bg-red-50/30 border-2 border-red-100 rounded-2xl">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2 text-red-700">
+                  <Video size={20} />
+                  <span className="font-bold">Bài giảng Video</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <a 
+                    href={lesson.videoUrl} 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-2 px-4 py-2 bg-white text-red-600 border border-red-200 rounded-lg hover:bg-red-50 transition-colors text-sm font-medium"
+                  >
+                    <RefreshCw size={16} />
+                    Mở trong tab mới
+                  </a>
+                </div>
+              </div>
+              
+              <div className="aspect-video rounded-xl overflow-hidden border border-gray-200 bg-black shadow-inner">
+                <iframe
+                  src={getVideoEmbedUrl(lesson.videoUrl) || ''}
+                  width="100%"
+                  height="100%"
+                  frameBorder="0"
+                  title="Video Player"
+                  allowFullScreen
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                ></iframe>
+              </div>
+            </div>
+          )}
 
           {lesson.pptUrl && (
             <div className="mt-8 p-6 bg-indigo-50/30 border-2 border-indigo-100 rounded-2xl">
@@ -334,24 +657,36 @@ export const LessonDetail = () => {
                   <FileIcon size={20} />
                   <span className="font-bold">Tài liệu PowerPoint</span>
                 </div>
-                <a 
-                  href={lesson.pptUrl} 
-                  download={`${lesson.title}.pptx`}
-                  className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors text-sm font-medium"
-                >
-                  <Upload size={16} className="rotate-180" />
-                  Tải về máy
-                </a>
+                <div className="flex items-center gap-2">
+                  <a 
+                    href={lesson.pptUrl} 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-2 px-4 py-2 bg-white text-indigo-600 border border-indigo-200 rounded-lg hover:bg-indigo-50 transition-colors text-sm font-medium"
+                  >
+                    <RefreshCw size={16} />
+                    Mở trong tab mới
+                  </a>
+                  <a 
+                    href={lesson.pptUrl} 
+                    download={`${lesson.title}.pptx`}
+                    className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors text-sm font-medium"
+                  >
+                    <Upload size={16} className="rotate-180" />
+                    Tải về máy
+                  </a>
+                </div>
               </div>
               
               {lesson.pptUrl.startsWith('http') ? (
-                <div className="aspect-video rounded-xl overflow-hidden border border-gray-200 bg-white">
+                <div className="aspect-video rounded-xl overflow-hidden border border-gray-200 bg-white shadow-inner">
                   <iframe
-                    src={`https://docs.google.com/viewer?url=${encodeURIComponent(lesson.pptUrl)}&embedded=true`}
+                    src={getEmbedUrl(lesson.pptUrl) || ''}
                     width="100%"
                     height="100%"
                     frameBorder="0"
                     title="PowerPoint Viewer"
+                    allowFullScreen
                   ></iframe>
                 </div>
               ) : (
@@ -364,9 +699,9 @@ export const LessonDetail = () => {
           )}
 
           {/* Interactive Content Blocks */}
-          {lesson.interactiveContent && lesson.interactiveContent.length > 0 && (
+          {ensureArray(lesson.interactiveContent).length > 0 && (
             <div className="mt-8 space-y-2">
-              {lesson.interactiveContent.map(block => renderInteractiveBlock(block))}
+              {ensureArray(lesson.interactiveContent).map(block => renderInteractiveBlock(block))}
             </div>
           )}
 
@@ -524,6 +859,204 @@ export const LessonDetail = () => {
           </div>
         </div>
       </div>
+      
+      {lesson && (
+        <AITutor 
+          lessonTitle={lesson.title} 
+          lessonContent={lesson.content} 
+          interactiveContent={lesson.interactiveContent}
+          userName={user?.fullName} 
+        />
+      )}
+    </div>
+  );
+};
+
+const ClickRevealDiscovery = ({ options, correctAnswer, onComplete, disabled }: { options: string[], correctAnswer: string | string[], onComplete: (isCorrect: boolean) => void, disabled: boolean }) => {
+  const [revealedIndices, setRevealedIndices] = useState<number[]>([]);
+  
+  const handleReveal = (idx: number) => {
+    if (!revealedIndices.includes(idx)) {
+      setRevealedIndices(prev => [...prev, idx]);
+    }
+  };
+
+  const isAllRevealed = revealedIndices.length === options.length;
+
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        {options.map((title, idx) => (
+          <div key={idx} className="border-2 border-indigo-100 rounded-xl overflow-hidden bg-white shadow-sm hover:shadow-md transition-shadow">
+            <button
+              onClick={() => handleReveal(idx)}
+              className={`w-full p-4 text-left font-bold transition-colors flex justify-between items-center ${
+                revealedIndices.includes(idx) ? 'text-indigo-700 bg-indigo-50' : 'text-gray-700 bg-gray-50 hover:bg-gray-100'
+              }`}
+            >
+              {title}
+              <span className="text-xs font-normal">{revealedIndices.includes(idx) ? 'Đã xem' : 'Nhấn để xem'}</span>
+            </button>
+            {revealedIndices.includes(idx) && (
+              <div className="p-4 text-sm text-gray-600 animate-in fade-in slide-in-from-top-2 duration-300">
+                {Array.isArray(correctAnswer) ? correctAnswer[idx] : correctAnswer}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+      
+      {!disabled && isAllRevealed && (
+        <button
+          onClick={() => onComplete(true)}
+          className="w-full py-3 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 transition-colors mt-4 shadow-lg shadow-indigo-200"
+        >
+          Tôi đã hoàn thành việc tìm hiểu
+        </button>
+      )}
+    </div>
+  );
+};
+
+const DragDropMatching = ({ options, explanation, onComplete, disabled }: { options: string[], explanation?: string, onComplete: (isCorrect: boolean, message: string) => void, disabled: boolean }) => {
+  const [pairs] = useState(() => options.map(o => o.split('|')));
+  const [leftItems] = useState(() => pairs.map(p => p[0]));
+  const [rightItems] = useState(() => [...pairs.map(p => p[1])].sort(() => Math.random() - 0.5));
+  
+  const [selectedLeft, setSelectedLeft] = useState<number | null>(null);
+  const [matches, setMatches] = useState<Record<number, number>>({}); // leftIdx -> rightIdx
+  const [isChecking, setIsChecking] = useState(false);
+  const [results, setResults] = useState<Record<number, boolean>>({});
+
+  const colors = [
+    'border-blue-200 bg-blue-50 text-blue-700',
+    'border-purple-200 bg-purple-50 text-purple-700',
+    'border-amber-200 bg-amber-50 text-amber-700',
+    'border-pink-200 bg-pink-50 text-pink-700',
+    'border-cyan-200 bg-cyan-50 text-cyan-700',
+  ];
+
+  const handleMatch = (leftIdx: number, rightIdx: number) => {
+    if (disabled || isChecking) return;
+    
+    // If this right item was already matched, remove the old match
+    const oldLeftIdx = Object.keys(matches).find(k => matches[parseInt(k)] === rightIdx);
+    
+    setMatches(prev => {
+      const next = { ...prev };
+      if (oldLeftIdx !== undefined) delete next[parseInt(oldLeftIdx)];
+      next[leftIdx] = rightIdx;
+      return next;
+    });
+    setSelectedLeft(null);
+  };
+
+  const checkAnswers = () => {
+    setIsChecking(true);
+    let correctCount = 0;
+    const newResults: Record<number, boolean> = {};
+
+    pairs.forEach((pair, leftIdx) => {
+      const matchedRightIdx = matches[leftIdx];
+      const isCorrect = matchedRightIdx !== undefined && rightItems[matchedRightIdx] === pair[1];
+      newResults[leftIdx] = isCorrect;
+      if (isCorrect) correctCount++;
+    });
+
+    setResults(newResults);
+    const isAllCorrect = correctCount === pairs.length;
+    
+    const message = isAllCorrect 
+      ? 'Tuyệt vời! Bạn đã ghép đúng tất cả các cặp.' 
+      : `Bạn đã ghép đúng ${correctCount}/${pairs.length} cặp. ${explanation || ''}`;
+      
+    onComplete(isAllCorrect, message);
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="grid grid-cols-2 gap-4 sm:gap-8">
+        {/* Column A */}
+        <div className="space-y-3">
+          <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-4">Cột A</p>
+          {leftItems.map((item, idx) => {
+            const matchedRightIdx = matches[idx];
+            const isMatched = matchedRightIdx !== undefined;
+            const colorClass = isMatched ? colors[idx % colors.length] : '';
+            const resultClass = isChecking ? (results[idx] ? 'border-emerald-500 bg-emerald-50 text-emerald-700' : 'border-red-500 bg-red-50 text-red-700') : '';
+
+            return (
+              <button
+                key={idx}
+                onClick={() => setSelectedLeft(idx)}
+                disabled={disabled || isChecking}
+                className={`w-full p-4 text-sm text-left rounded-xl border-2 transition-all duration-200 flex items-center gap-3 ${
+                  selectedLeft === idx ? 'border-indigo-500 bg-indigo-50 shadow-md ring-2 ring-indigo-200' : 
+                  isChecking ? resultClass :
+                  isMatched ? colorClass :
+                  'border-gray-100 bg-white hover:border-indigo-200 hover:shadow-sm'
+                }`}
+              >
+                <span className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold ${isMatched || selectedLeft === idx ? 'bg-current bg-opacity-10' : 'bg-gray-100 text-gray-400'}`}>
+                  {idx + 1}
+                </span>
+                <span className="font-medium">{item}</span>
+                {isChecking && (
+                  <div className="ml-auto">
+                    {results[idx] ? <Check size={16} /> : <X size={16} />}
+                  </div>
+                )}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Column B */}
+        <div className="space-y-3">
+          <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-4">Cột B</p>
+          {rightItems.map((item, idx) => {
+            const matchedLeftIdxStr = Object.keys(matches).find(k => matches[parseInt(k)] === idx);
+            const matchedLeftIdx = matchedLeftIdxStr !== undefined ? parseInt(matchedLeftIdxStr) : undefined;
+            const isMatched = matchedLeftIdx !== undefined;
+            const colorClass = isMatched ? colors[matchedLeftIdx % colors.length] : '';
+            const resultClass = isChecking && matchedLeftIdx !== undefined ? (results[matchedLeftIdx] ? 'border-emerald-500 bg-emerald-50 text-emerald-700' : 'border-red-500 bg-red-50 text-red-700') : '';
+
+            return (
+              <button
+                key={idx}
+                onClick={() => {
+                  if (selectedLeft !== null) {
+                    handleMatch(selectedLeft, idx);
+                  }
+                }}
+                disabled={disabled || isChecking || (selectedLeft === null && !isMatched)}
+                className={`w-full p-4 text-sm text-left rounded-xl border-2 transition-all duration-200 flex items-center gap-3 ${
+                  isChecking ? resultClass :
+                  isMatched ? colorClass :
+                  selectedLeft !== null ? 'border-dashed border-indigo-300 bg-white hover:bg-indigo-50 animate-pulse' :
+                  'border-gray-100 bg-gray-50 text-gray-400 cursor-not-allowed'
+                }`}
+              >
+                {isMatched && (
+                  <span className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold bg-current bg-opacity-10">
+                    {matchedLeftIdx + 1}
+                  </span>
+                )}
+                <span className="font-medium">{item}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+      
+      {!disabled && !isChecking && Object.keys(matches).length === pairs.length && (
+        <button
+          onClick={checkAnswers}
+          className="w-full py-4 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200 hover:-translate-y-0.5 active:translate-y-0"
+        >
+          Kiểm tra kết quả
+        </button>
+      )}
     </div>
   );
 };

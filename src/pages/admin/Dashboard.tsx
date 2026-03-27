@@ -9,53 +9,6 @@ export const AdminDashboard: React.FC = () => {
   const [students, setStudents] = useState<User[]>([]);
   const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
-  const [isSyncing, setIsSyncing] = useState(false);
-  const [connectionStatus, setConnectionStatus] = useState<{ ok: boolean, message: string } | null>(null);
-
-  const handleCheckConnection = async () => {
-    setIsSyncing(true);
-    try {
-      const result = await dataProvider.testConnection();
-      setConnectionStatus(result);
-      if (result.ok) {
-        alert(result.message);
-      } else {
-        alert('Kết nối thất bại: ' + result.message);
-      }
-    } catch (error) {
-      alert('Lỗi hệ thống: ' + error);
-    } finally {
-      setIsSyncing(false);
-    }
-  };
-
-  const handleSyncPush = async () => {
-    if (window.confirm('Bạn có muốn đẩy toàn bộ dữ liệu hiện tại lên Google Sheets không? (Lưu ý: Dữ liệu trên Sheet có thể bị ghi đè hoặc trùng lặp)')) {
-      setIsSyncing(true);
-      try {
-        await initialSyncToGAS();
-        alert('Đã đẩy dữ liệu lên Sheet thành công!');
-        window.location.reload();
-      } catch (error) {
-        alert('Lỗi đồng bộ: ' + error);
-      } finally {
-        setIsSyncing(false);
-      }
-    }
-  };
-
-  const handleSyncPull = async () => {
-    setIsSyncing(true);
-    try {
-      await dataProvider.syncWithGAS();
-      alert('Đã cập nhật dữ liệu mới nhất từ Google Sheets!');
-      window.location.reload();
-    } catch (error) {
-      alert('Lỗi cập nhật: ' + error);
-    } finally {
-      setIsSyncing(false);
-    }
-  };
 
   useEffect(() => {
     const fetchData = async () => {
@@ -80,43 +33,9 @@ export const AdminDashboard: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <h2 className="text-2xl font-bold text-gray-900">Tổng quan hệ thống</h2>
-        <div className="flex gap-3">
-          <button 
-            onClick={handleCheckConnection}
-            disabled={isSyncing}
-            className={`flex items-center gap-2 px-4 py-2 rounded-xl transition-all disabled:opacity-50 shadow-sm ${
-              connectionStatus?.ok ? 'bg-blue-600 hover:bg-blue-700' : 'bg-gray-600 hover:bg-gray-700'
-            } text-white`}
-          >
-            <RefreshCw size={18} className={isSyncing ? 'animate-spin' : ''} />
-            {isSyncing ? 'Đang kiểm tra...' : 'Kiểm tra kết nối'}
-          </button>
-          <button 
-            onClick={handleSyncPull}
-            disabled={isSyncing}
-            className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 transition-all disabled:opacity-50 shadow-sm"
-          >
-            <RefreshCw size={18} className={isSyncing ? 'animate-spin' : ''} />
-            {isSyncing ? 'Đang tải...' : 'Lấy dữ liệu từ Sheet'}
-          </button>
-          <button 
-            onClick={handleSyncPush}
-            disabled={isSyncing}
-            className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition-all disabled:opacity-50 shadow-sm"
-          >
-            <RefreshCw size={18} className={isSyncing ? 'animate-spin' : ''} />
-            {isSyncing ? 'Đang đẩy...' : 'Đẩy dữ liệu lên Sheet'}
-          </button>
-        </div>
       </div>
-
-      {connectionStatus && (
-        <div className={`p-3 rounded-xl text-sm font-medium ${connectionStatus.ok ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>
-          Trạng thái kết nối: {connectionStatus.message}
-        </div>
-      )}
       
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         {/* Card 1: Tổng số lớp */}
@@ -174,7 +93,7 @@ export const AdminDashboard: React.FC = () => {
                   <th className="py-3 px-4 text-sm font-semibold text-gray-600">Tên lớp</th>
                   <th className="py-3 px-4 text-sm font-semibold text-gray-600">Khối</th>
                   <th className="py-3 px-4 text-sm font-semibold text-gray-600">GVCN</th>
-                  <th className="py-3 px-4 text-sm font-semibold text-gray-600">Niên khóa</th>
+                  <th className="py-3 px-4 text-sm font-semibold text-gray-600">Năm học</th>
                 </tr>
               </thead>
               <tbody>

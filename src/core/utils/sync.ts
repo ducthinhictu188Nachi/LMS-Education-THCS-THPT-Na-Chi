@@ -3,7 +3,13 @@ import { seedData } from '../providers/mockProvider';
 
 export async function initialSyncToGAS() {
   const stored = localStorage.getItem('lms_data');
-  const data = stored ? JSON.parse(stored) : seedData();
+  let data;
+  try {
+    data = stored ? JSON.parse(stored) : seedData();
+  } catch (e) {
+    console.error("Error parsing stored data:", e);
+    data = seedData();
+  }
   
   console.log('Starting sync to Google Sheets...');
   

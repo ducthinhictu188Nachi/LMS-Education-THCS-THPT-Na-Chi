@@ -1,9 +1,20 @@
 import { DataProvider } from '../dataProvider';
-import { User, Class, Subject, Topic, Lesson, Assignment, Test, Submission, Progress, Announcement } from '../types';
+import { User, Class, Subject, Topic, Lesson, Assignment, Test, Submission, Progress, Announcement, Badge } from '../types';
+import { ensureArray } from '../utils/data';
 
-export const GAS_URL = 'https://script.google.com/macros/s/AKfycbzOh60w3UXVl4av1nbZaaTGpkgY15t2nhXRh1OKdDHrhYiymxlVhyg-0KO0BLGtA6cC/exec';
+export const GAS_URL = 'https://script.google.com/macros/s/AKfycbzdRQ8VYyxoLhxzXVPGMHYTp9nOzq2aDMpzYqQlVKCIhpMg2a2bwF2wmAoLx91mBFYrPA/exec';
 
 let currentUser: User | null = null;
+
+function normalizeUser(user: any): User {
+  if (!user) return user;
+  return {
+    ...user,
+    badges: ensureArray(user.badges),
+    xp: Number(user.xp || 0),
+    level: Number(user.level || 1)
+  };
+}
 
 export async function callGAS(action: string, payload: any = {}) {
   console.log(`[GAS] Calling action: ${action}`, payload);
@@ -21,15 +32,30 @@ export async function callGAS(action: string, payload: any = {}) {
       throw new Error(`HTTP error! status: ${response.status}`);
     }
 
-    const result = await response.json();
+    const text = await response.text();
+    let result;
+    try {
+      result = JSON.parse(text);
+    } catch (e) {
+      if (text.includes('LMS Backend') || text.trim().startsWith('<')) {
+        console.warn(`[GAS] Backend is not configured to return JSON for ${action}. Falling back to local data.`);
+        throw new Error('GAS_NOT_CONFIGURED');
+      }
+      console.error(`[GAS] Invalid JSON response for ${action}:`, text.substring(0, 100));
+      throw new Error(`Invalid response from server. Expected JSON but got: ${text.substring(0, 50)}...`);
+    }
+
     console.log(`[GAS] Response for ${action}:`, result);
     
     if (!result.ok) {
       throw new Error(result.error || 'Lỗi không xác định từ Google Script');
     }
+
     return result.data;
-  } catch (error) {
-    console.error(`[GAS] Connection Error (${action}):`, error);
+  } catch (error: any) {
+    if (error.message !== 'GAS_NOT_CONFIGURED') {
+      console.error(`[GAS] Connection Error (${action}):`, error);
+    }
     throw error;
   }
 }
@@ -40,12 +66,13 @@ export const gasProvider: DataProvider = {
     const users = allData.users || [];
     const user = users.find((u: User) => String(u.username) === String(username) && String(u.role) === String(role) && String(u.password) === String(password));
     if (user) {
+      const normalizedUser = normalizeUser(user);
       // Sync all data from GAS to local storage on login
       localStorage.setItem('lms_data', JSON.stringify(allData));
       
-      currentUser = user;
-      localStorage.setItem('lms_current_user', JSON.stringify(user));
-      return user;
+      currentUser = normalizedUser;
+      localStorage.setItem('lms_current_user', JSON.stringify(normalizedUser));
+      return normalizedUser;
     }
     return null;
   },
@@ -53,8 +80,13 @@ export const gasProvider: DataProvider = {
     if (currentUser) return currentUser;
     const stored = localStorage.getItem('lms_current_user');
     if (stored) {
-      currentUser = JSON.parse(stored);
-      return currentUser;
+      try {
+        currentUser = normalizeUser(JSON.parse(stored));
+        return currentUser;
+      } catch (e) {
+        console.error("Error parsing current user:", e);
+        return null;
+      }
     }
     return null;
   },
@@ -66,6 +98,10 @@ export const gasProvider: DataProvider = {
   getList: async <T>(resource: string, params?: any): Promise<T[]> => {
     const allData = await callGAS('fetch_all');
     let list = allData[resource] || [];
+    
+    if (resource === 'users') {
+      list = list.map(normalizeUser);
+    }
     
     if (params) {
       list = list.filter((item: any) => {
@@ -82,10 +118,15 @@ export const gasProvider: DataProvider = {
     const list = allData[resource] || [];
     const item = list.find((i: any) => i.id === id);
     if (!item) throw new Error('Not found');
+    
+    if (resource === 'users') {
+      return normalizeUser(item) as any;
+    }
+    
     return item;
   },
   create: async <T>(resource: string, payload: any): Promise<T> => {
-    const newItem = { ...payload, id: Math.random().toString(36).substr(2, 9) };
+    const newItem = { id: payload.id || Math.random().toString(36).substr(2, 9), ...payload };
     await callGAS('upsert_record', { table: resource, record: newItem });
     return newItem;
   },
@@ -101,7 +142,7 @@ export const gasProvider: DataProvider = {
   submitAssignment: async (submission) => {
     const newSubmission: Submission = {
       ...submission,
-      id: Math.random().toString(36).substr(2, 9),
+      id: (submission as any).id || Math.random().toString(36).substr(2, 9),
       submittedAt: new Date().toISOString()
     };
     await callGAS('upsert_record', { table: 'submissions', record: newSubmission });
@@ -133,5 +174,25 @@ export const gasProvider: DataProvider = {
     } catch (error) {
       return { ok: false, message: `Lỗi kết nối: ${error instanceof Error ? error.message : String(error)}` };
     }
+  },
+  awardXP: async (userId, amount) => {
+    const user = await gasProvider.getOne<User>('users', userId);
+    user.xp = (user.xp || 0) + amount;
+    user.level = Math.floor(Math.sqrt(user.xp / 100)) + 1;
+    await callGAS('upsert_record', { table: 'users', record: user });
+    return user;
+  },
+  awardBadge: async (userId: string, badge: Omit<Badge, 'unlockedAt'>) => {
+    const user = await gasProvider.getOne<User>('users', userId);
+    if (!user.badges) user.badges = [];
+    if (user.badges.some((b: any) => b.id === badge.id)) return user;
+    const newBadge = { ...badge, unlockedAt: new Date().toISOString() };
+    user.badges.push(newBadge);
+    await callGAS('upsert_record', { table: 'users', record: user });
+    return user;
+  },
+  getLeaderboard: async () => {
+    const users = await gasProvider.getList<User>('users');
+    return users.filter(u => u.role === 'student').sort((a, b) => (b.xp || 0) - (a.xp || 0));
   }
 };

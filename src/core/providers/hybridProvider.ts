@@ -1,6 +1,7 @@
 import { DataProvider } from '../dataProvider';
 import { gasProvider, GAS_URL, callGAS } from './gasProvider';
-import { User, Submission } from '../types';
+import { User, Submission, Badge } from '../types';
+import { ensureArray } from '../utils/data';
 import LZString from 'lz-string';
 
 const STORAGE_KEY = 'lms_data';
@@ -8,17 +9,28 @@ const STORAGE_KEY = 'lms_data';
 const getData = () => {
   const stored = localStorage.getItem(STORAGE_KEY);
   if (stored) {
+    // First check if it's plain JSON (starts with { or [)
+    if (stored.startsWith('{') || stored.startsWith('[')) {
+      try {
+        return JSON.parse(stored);
+      } catch (e) {
+        console.error('Failed to parse uncompressed stored data:', e);
+      }
+    }
+    
     try {
-      // Try to decompress first
-      const decompressed = LZString.decompress(stored);
+      // Try to decompress UTF16 first (the correct way)
+      const decompressed = LZString.decompressFromUTF16(stored);
       if (decompressed) {
         return JSON.parse(decompressed);
       }
-      // Fallback for uncompressed data
-      return JSON.parse(stored);
+      // Fallback to standard decompress in case it was saved with the old method
+      const oldDecompressed = LZString.decompress(stored);
+      if (oldDecompressed) {
+        return JSON.parse(oldDecompressed);
+      }
     } catch (e) {
-      console.error('Failed to parse stored data:', e);
-      return null;
+      console.error('Failed to decompress stored data:', e);
     }
   }
   return null;
@@ -27,7 +39,7 @@ const getData = () => {
 const saveData = (data: any) => {
   try {
     const jsonString = JSON.stringify(data);
-    const compressed = LZString.compress(jsonString);
+    const compressed = LZString.compressToUTF16(jsonString);
     localStorage.setItem(STORAGE_KEY, compressed);
   } catch (e) {
     console.error('Storage quota exceeded or failed to save:', e);
@@ -41,28 +53,74 @@ const saveData = (data: any) => {
 
 let currentUser: User | null = null;
 
+function normalizeUser(user: any): User {
+  if (!user) return user;
+  return {
+    ...user,
+    badges: ensureArray(user.badges),
+    xp: Number(user.xp || 0),
+    level: Number(user.level || 1)
+  };
+}
+
 export const hybridProvider: DataProvider = {
   login: async (username, role, password) => {
     // Always try GAS login first to ensure we have latest data and correct password
     try {
       const user = await gasProvider.login(username, role, password);
       if (user) {
-        currentUser = user;
-        localStorage.setItem('lms_current_user', JSON.stringify(user));
-        return user;
+        const normalizedUser = normalizeUser(user);
+        currentUser = normalizedUser;
+        localStorage.setItem('lms_current_user', JSON.stringify(normalizedUser));
+        return normalizedUser;
       }
-    } catch (err) {
-      console.warn('GAS login failed, falling back to local data:', err);
+    } catch (err: any) {
+      if (err.message !== 'GAS_NOT_CONFIGURED') {
+        console.warn('GAS login failed, falling back to local data:', err);
+      }
     }
 
     // Fallback to local data if GAS is unavailable (e.g. offline)
-    const data = getData();
-    if (data) {
+    let data = getData();
+    
+    // If local data is empty, seed it immediately
+    if (!data || !data.users || data.users.length === 0) {
+      const { seedData } = await import('./mockProvider');
+      data = seedData();
+    }
+
+    // GUARANTEE LOGIN FOR DEMO ACCOUNTS
+    if (username === 'admin' && password === '123' && role === 'teacher') {
+      let user = data?.users?.find((u: any) => u.username === 'admin');
+      if (!user) {
+         user = { id: 't1', username: 'admin', password: '123', fullName: 'Giáo viên Quản trị', role: 'teacher' };
+         if (data && data.users) { data.users.push(user); saveData(data); }
+      }
+      const normalizedUser = normalizeUser(user);
+      currentUser = normalizedUser;
+      localStorage.setItem('lms_current_user', JSON.stringify(normalizedUser));
+      return normalizedUser;
+    }
+
+    if (username === 'student' && password === '123' && role === 'student') {
+      let user = data?.users?.find((u: any) => u.username === 'student');
+      if (!user) {
+         user = { id: 's1', username: 'student', password: '123', fullName: 'Học sinh Demo', role: 'student', classId: 'c1' };
+         if (data && data.users) { data.users.push(user); saveData(data); }
+      }
+      const normalizedUser = normalizeUser(user);
+      currentUser = normalizedUser;
+      localStorage.setItem('lms_current_user', JSON.stringify(normalizedUser));
+      return normalizedUser;
+    }
+
+    if (data && data.users) {
       const user = data.users.find((u: any) => String(u.username) === String(username) && String(u.role) === String(role) && String(u.password) === String(password));
       if (user) {
-        currentUser = user;
-        localStorage.setItem('lms_current_user', JSON.stringify(user));
-        return user;
+        const normalizedUser = normalizeUser(user);
+        currentUser = normalizedUser;
+        localStorage.setItem('lms_current_user', JSON.stringify(normalizedUser));
+        return normalizedUser;
       }
     }
     
@@ -72,8 +130,13 @@ export const hybridProvider: DataProvider = {
     if (currentUser) return currentUser;
     const stored = localStorage.getItem('lms_current_user');
     if (stored) {
-      currentUser = JSON.parse(stored);
-      return currentUser;
+      try {
+        currentUser = normalizeUser(JSON.parse(stored));
+        return currentUser;
+      } catch (e) {
+        console.error("Error parsing current user:", e);
+        return null;
+      }
     }
     return null;
   },
@@ -87,6 +150,11 @@ export const hybridProvider: DataProvider = {
     if (!data) return gasProvider.getList(resource, params);
     
     let list = data[resource] || [];
+    
+    if (resource === 'users') {
+      list = list.map(normalizeUser);
+    }
+    
     if (params) {
       list = list.filter((item: any) => {
         for (const key in params) {
@@ -104,57 +172,85 @@ export const hybridProvider: DataProvider = {
     const list = data[resource] || [];
     const item = list.find((i: any) => i.id === id);
     if (!item) throw new Error('Not found');
+    
+    if (resource === 'users') {
+      return normalizeUser(item) as any;
+    }
+    
     return item;
   },
   create: async <T>(resource: string, payload: any): Promise<T> => {
-    const data = getData();
+    let data = getData();
     const newItem = { id: payload.id || Math.random().toString(36).substr(2, 9), ...payload };
     
-    if (data) {
-      if (!data[resource]) data[resource] = [];
-      data[resource].push(newItem);
-      saveData(data);
+    if (!data) {
+      data = { [resource]: [] };
     }
     
-    // Background sync
-    gasProvider.create(resource, newItem).catch(err => console.error('Background sync create error:', err));
+    if (!data[resource]) data[resource] = [];
+    data[resource].push(newItem);
+    saveData(data);
+    
+    // Sync with GAS and wait for it to ensure consistency
+    try {
+      await gasProvider.create(resource, newItem);
+    } catch (err: any) {
+      if (err.message !== 'GAS_NOT_CONFIGURED') {
+        console.error('Sync create error:', err);
+      }
+    }
     
     return newItem;
   },
   createMany: async <T>(resource: string, payloads: any[]): Promise<T[]> => {
-    const data = getData();
+    let data = getData();
     const newItems = payloads.map(payload => ({ id: payload.id || Math.random().toString(36).substr(2, 9), ...payload }));
     
-    if (data) {
-      if (!data[resource]) data[resource] = [];
-      data[resource].push(...newItems);
-      saveData(data);
+    if (!data) {
+      data = { [resource]: [] };
     }
     
-    // Background sync the whole table
-    if (data && data[resource]) {
-      callGAS('sync_table', { table: resource, data: data[resource] }).catch(err => console.error('Background sync createMany error:', err));
+    if (!data[resource]) data[resource] = [];
+    data[resource].push(...newItems);
+    saveData(data);
+    
+    // Sync the whole table to GAS
+    if (data[resource]) {
+      try {
+        await callGAS('sync_table', { table: resource, data: data[resource] });
+      } catch (err: any) {
+        if (err.message !== 'GAS_NOT_CONFIGURED') {
+          console.error('Sync createMany error:', err);
+        }
+      }
     }
     
     return newItems as T[];
   },
   update: async <T>(resource: string, id: string, payload: any): Promise<T> => {
-    const data = getData();
-    const updatedItem = { ...payload, id };
+    let data = getData();
+    let fullUpdatedItem = { ...payload, id };
     
     if (data) {
       const list = data[resource] || [];
       const index = list.findIndex((i: any) => i.id === id);
       if (index !== -1) {
-        list[index] = { ...list[index], ...payload };
+        fullUpdatedItem = { ...list[index], ...payload };
+        list[index] = fullUpdatedItem;
         saveData(data);
       }
     }
     
-    // Background sync
-    gasProvider.update(resource, id, payload).catch(err => console.error('Background sync update error:', err));
+    // Sync with GAS and wait for it - ALWAYS send the full object to avoid wiping data in Google Sheets
+    try {
+      await gasProvider.update(resource, id, fullUpdatedItem);
+    } catch (err: any) {
+      if (err.message !== 'GAS_NOT_CONFIGURED') {
+        console.error('Sync update error:', err);
+      }
+    }
     
-    return updatedItem as T;
+    return fullUpdatedItem as T;
   },
   delete: async (resource: string, id: string): Promise<void> => {
     const data = getData();
@@ -165,27 +261,71 @@ export const hybridProvider: DataProvider = {
       saveData(data);
     }
     
-    // Background sync
-    gasProvider.delete(resource, id).catch(err => console.error('Background sync delete error:', err));
+    // Sync with GAS and wait for it
+    try {
+      await gasProvider.delete(resource, id);
+    } catch (err: any) {
+      if (err.message !== 'GAS_NOT_CONFIGURED') {
+        console.error('Sync delete error:', err);
+      }
+    }
   },
 
   submitAssignment: async (submission) => {
     const data = getData();
+    
+    if (data) {
+      if (!data.submissions) data.submissions = [];
+      const existingIndex = data.submissions.findIndex(
+        (s: any) => s.studentId === submission.studentId && 
+          ((submission.assignmentId && s.assignmentId === submission.assignmentId) || 
+           (submission.testId && s.testId === submission.testId))
+      );
+      
+      let newSubmission: Submission;
+      if (existingIndex !== -1) {
+        newSubmission = {
+          ...data.submissions[existingIndex],
+          ...submission,
+          submittedAt: new Date().toISOString()
+        };
+        data.submissions[existingIndex] = newSubmission;
+      } else {
+        newSubmission = {
+          ...submission,
+          id: Math.random().toString(36).substr(2, 9),
+          submittedAt: new Date().toISOString()
+        };
+        data.submissions.push(newSubmission);
+      }
+      
+      saveData(data);
+      
+      // Sync with GAS and wait for it
+      try {
+        await gasProvider.submitAssignment(newSubmission);
+      } catch (err: any) {
+        if (err.message !== 'GAS_NOT_CONFIGURED') {
+          console.error('Sync submitAssignment error:', err);
+        }
+      }
+      
+      return newSubmission;
+    }
+    
+    // Fallback if no local data
     const newSubmission: Submission = {
       ...submission,
       id: Math.random().toString(36).substr(2, 9),
       submittedAt: new Date().toISOString()
     };
-    
-    if (data) {
-      if (!data.submissions) data.submissions = [];
-      data.submissions.push(newSubmission);
-      saveData(data);
+    try {
+      await gasProvider.submitAssignment(newSubmission);
+    } catch (err: any) {
+      if (err.message !== 'GAS_NOT_CONFIGURED') {
+        console.error('Sync submitAssignment error:', err);
+      }
     }
-    
-    // Background sync
-    gasProvider.submitAssignment(submission).catch(err => console.error('Background sync submitAssignment error:', err));
-    
     return newSubmission;
   },
   gradeSubmission: async (submissionId, score, feedback) => {
@@ -201,8 +341,14 @@ export const hybridProvider: DataProvider = {
       }
     }
     
-    // Background sync
-    gasProvider.gradeSubmission(submissionId, score, feedback).catch(err => console.error('Background sync gradeSubmission error:', err));
+    // Sync with GAS and wait for it
+    try {
+      await gasProvider.gradeSubmission(submissionId, score, feedback);
+    } catch (err: any) {
+      if (err.message !== 'GAS_NOT_CONFIGURED') {
+        console.error('Sync gradeSubmission error:', err);
+      }
+    }
     
     if (updated) return updated;
     return gasProvider.gradeSubmission(submissionId, score, feedback);
@@ -217,14 +363,100 @@ export const hybridProvider: DataProvider = {
     console.log('Syncing with GAS in background...');
     try {
       const data = await callGAS('fetch_all');
-      saveData(data);
-      console.log('Sync completed!');
-    } catch (error) {
+      if (data && data.users && data.users.length > 0) {
+        saveData(data);
+        console.log('Sync completed!');
+      } else {
+        console.log('GAS data is empty, keeping local data');
+        // If local data doesn't exist, seed it
+        const localData = getData();
+        if (!localData || !localData.users || localData.users.length === 0) {
+          import('./mockProvider').then(({ seedData }) => {
+            seedData();
+          });
+        }
+      }
+    } catch (error: any) {
+      if (error.message === 'GAS_NOT_CONFIGURED') {
+        console.log('GAS is not configured properly, using local data');
+        const localData = getData();
+        if (!localData || !localData.users || localData.users.length === 0) {
+          import('./mockProvider').then(({ seedData }) => {
+            seedData();
+          });
+        }
+        return;
+      }
       console.error('Sync failed:', error);
       throw error;
     }
   },
   testConnection: async () => {
     return gasProvider.testConnection();
+  },
+  awardXP: async (userId: string, amount: number) => {
+    const data = getData();
+    if (!data) throw new Error('No data');
+    const userIndex = data.users.findIndex((u: any) => u.id === userId);
+    if (userIndex === -1) throw new Error('User not found');
+    
+    const user = data.users[userIndex];
+    user.xp = (user.xp || 0) + amount;
+    user.level = Math.floor(Math.sqrt(user.xp / 100)) + 1;
+    
+    data.users[userIndex] = user;
+    saveData(data);
+    
+    // Update current user if it's the one logged in
+    if (currentUser && currentUser.id === userId) {
+      currentUser = user;
+      localStorage.setItem('lms_current_user', JSON.stringify(user));
+    }
+    
+    // Sync with GAS
+    try {
+      await gasProvider.update('users', userId, user);
+    } catch (e) {}
+    
+    return user;
+  },
+  awardBadge: async (userId: string, badge: Omit<Badge, 'unlockedAt'>) => {
+    const data = getData();
+    if (!data) throw new Error('No data');
+    const userIndex = data.users.findIndex((u: any) => u.id === userId);
+    if (userIndex === -1) throw new Error('User not found');
+    
+    const user = data.users[userIndex];
+    if (!user.badges) user.badges = [];
+    
+    // Check if badge already exists
+    if (user.badges.some((b: any) => b.id === badge.id)) return user;
+    
+    const newBadge = { ...badge, unlockedAt: new Date().toISOString() };
+    user.badges.push(newBadge);
+    
+    data.users[userIndex] = user;
+    saveData(data);
+    
+    // Update current user if it's the one logged in
+    if (currentUser && currentUser.id === userId) {
+      currentUser = user;
+      localStorage.setItem('lms_current_user', JSON.stringify(user));
+    }
+    
+    // Sync with GAS
+    try {
+      await gasProvider.update('users', userId, user);
+    } catch (e) {}
+    
+    return user;
+  },
+  getLeaderboard: async () => {
+    const data = getData();
+    if (!data) {
+      const users = await gasProvider.getList<User>('users');
+      return users.filter(u => u.role === 'student').sort((a, b) => (b.xp || 0) - (a.xp || 0));
+    }
+    return (data.users || []).filter((u: any) => u.role === 'student').sort((a: any, b: any) => (b.xp || 0) - (a.xp || 0));
   }
 };
